@@ -40,7 +40,7 @@ var (
 	sync_queue_limit                 *int
 	signing_key                      *string
 	oracle_address                   *string
-	lara_address                     *string
+	lara_factory_address             *string
 )
 
 func init() {
@@ -54,21 +54,21 @@ func init() {
 	validators_yield_saving_interval = flag.Int("validators_yield_saving_interval", 999, "interval for saving validators yield")
 	sync_queue_limit = flag.Int("sync_queue_limit", 10, "limit of blocks in the sync queue")
 	oracle_address = flag.String("oracle_address", "0x3187C7486F6Aa40C520892766B9d8dcD3C23D9F1", "oracles address")
-	lara_address = flag.String("lara_address", "0x352AF15174C6415A3e33970636F2019337a60C45", "lara address")
+	lara_factory_address = flag.String("lara_factory_address", "0x352AF15174C6415A3e33970636F2019337a60C45", "lara address")
 	signing_key = flag.String("signing_key", "", "signing key")
 	flag.Parse()
 
 	logging.Config(filepath.Join(*data_dir, "logs"), *log_level)
 	log.Print("\n\n\n")
 	log.WithFields(log.Fields{
-		"http_port":      *http_port,
-		"blockchain_ws":  *blockchain_ws,
-		"chain_id":       *chain_id,
-		"signing_key":    *signing_key,
-		"oracle_address": *oracle_address,
-		"lara_address":   *lara_address,
-		"data_dir":       *data_dir,
-		"log_level":      *log_level}).
+		"http_port":            *http_port,
+		"blockchain_ws":        *blockchain_ws,
+		"chain_id":             *chain_id,
+		"signing_key":          *signing_key,
+		"oracle_address":       *oracle_address,
+		"lara_factory_address": *lara_factory_address,
+		"data_dir":             *data_dir,
+		"log_level":            *log_level}).
 		Info("Application started")
 }
 
@@ -119,8 +119,8 @@ func main() {
 	api.RegisterHandlers(e, apiHandler)
 
 	// Registers oracle cron
-	if *signing_key == "" && *oracle_address == "" && *lara_address == "" {
-		log.WithFields(log.Fields{"signing_key": *signing_key, "oracle_address": *oracle_address, "lara_address": *lara_address}).Fatal("Oracle address, Lara address and signing key should be both set but both empty")
+	if *signing_key == "" && *oracle_address == "" && *lara_factory_address == "" {
+		log.WithFields(log.Fields{"signing_key": *signing_key, "oracle_address": *oracle_address, "lara_address": *lara_factory_address}).Fatal("Oracle address, Lara address and signing key should be both set but both empty")
 	}
 
 	indexer := indexer.NewIndexer(*blockchain_ws, st, c)
@@ -130,10 +130,10 @@ func main() {
 		log.WithError(err).Fatal("Failed to connect to blockchain")
 	}
 	log.Info("RPC initialized")
-	lara := lara.MakeLara(rpc, *signing_key, *lara_address, *oracle_address, *chain_id)
-	log.Info("Lara initialized")
+	laraFactory := lara.MakeLaraFactory(rpc, *signing_key, *lara_factory_address, *oracle_address, *chain_id)
+	log.Info("LaraFactory initialized")
 	o := oracle.MakeOracle(rpc, *signing_key, *oracle_address, *chain_id, *st)
-	go lara.Run()
+	go laraFactory.Run()
 	go indexer.Run(*blockchain_ws, st, c, o)
 	// start a http server for prometheus on a separate go routine
 	go metrics.RunPrometheusServer(":" + strconv.FormatInt(int64(*metrics_port), 10))
