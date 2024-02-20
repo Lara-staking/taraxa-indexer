@@ -6,11 +6,9 @@ import (
 	"strings"
 	"time"
 
-	dpos_contract "github.com/Taraxa-project/taraxa-indexer/abi/dpos"
 	lara_contract "github.com/Taraxa-project/taraxa-indexer/abi/lara"
 	apy_oracle "github.com/Taraxa-project/taraxa-indexer/abi/oracle"
 	"github.com/Taraxa-project/taraxa-indexer/internal/oracle"
-	"github.com/Taraxa-project/taraxa-indexer/internal/transact"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -26,39 +24,48 @@ type State struct {
 	validators                    []oracle.NodeData
 	isMakingSnapshot              bool
 	isRebalancing                 bool
+	isActive                      bool
 }
 type Lara struct {
 	deploymentAddress string
 	Eth               *ethclient.Client
 	signer            *bind.TransactOpts
-	chainID           *int
 	contract          *lara_contract.LaraContract
 	oracle            *apy_oracle.ApyOracle
-	dpos              *dpos_contract.DposContract
+	delegator         *common.Address
 	state             State
 }
 
-func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_address string, chainID int) *Lara {
+func MakeLara(rpc *ethclient.Client, signer *bind.TransactOpts, oracle *apy_oracle.ApyOracle, deployment_address, delegator string) *Lara {
 	l := new(Lara)
 	l.Eth = rpc
-	l.signer = transact.MakeSigner(signing_key, chainID)
+	l.signer = signer
 	l.deploymentAddress = deployment_address
-	l.chainID = &chainID
 	contract, err := lara_contract.NewLaraContract(common.HexToAddress(l.deploymentAddress), l.Eth)
 	if err != nil {
 		log.Fatalf("Failed to create contract: %v", err)
 	}
-	l.oracle, err = apy_oracle.NewApyOracle(common.HexToAddress(oracle_address), l.Eth)
-	if err != nil {
-		log.Fatalf("Failed to create oracle: %v", err)
-	}
-	l.dpos, err = dpos_contract.NewDposContract(common.HexToAddress("0x00000000000000000000000000000000000000fe"), l.Eth)
-	if err != nil {
-		log.Fatalf("Failed to create dpos: %v", err)
-	}
+	l.oracle = oracle
 	l.contract = contract
+	address := common.HexToAddress(delegator)
+	l.delegator = &address
+	l.state.isActive = true
 	l.SyncState()
 	return l
+}
+
+func (l *Lara) Stop() {
+	l.state.isActive = false
+}
+
+func (l *Lara) Start() {
+	l.state.isActive = true
+}
+
+func (l *Lara) Restart() {
+	l.state = State{}
+	l.Start()
+	go l.Run()
 }
 
 func (l *Lara) Run() {
@@ -67,6 +74,10 @@ func (l *Lara) Run() {
 	}
 	ticker := time.NewTicker(1 * time.Minute)
 	for range ticker.C {
+		if !l.state.isActive {
+			log.Info("Lara instance is not active. Stopping Run.")
+			break
+		}
 		ctx := context.Background()
 		currentBlock, err := l.Eth.BlockNumber(ctx)
 		if err != nil {
@@ -81,8 +92,10 @@ func (l *Lara) Run() {
 			// if the epoch is running
 			// end the epoch
 			l.Snapshot()
-			// wait 3 sec
+			// wait 1 block
 			time.Sleep(4 * time.Second)
+
+			// compound
 			l.Compound()
 		}
 		if int64(currentBlock) > expectedRebalanceTime {
@@ -90,7 +103,6 @@ func (l *Lara) Run() {
 			l.Rebalance()
 		}
 	}
-
 }
 
 func (l *Lara) Compound() {
@@ -202,7 +214,7 @@ func (l *Lara) SyncState() {
 	if err != nil {
 		log.Fatalf("SyncState: Failed to get current block: %v", err)
 	}
-	log.WithFields(log.Fields{"currentBlock": currentBlock, "lastRebalance": l.state.lastRebalance, "lastSnapshotBlock": l.state.lastSnapshot, "nextSnapshotBlock": nextSnapshot, "nodesDelegatedTo": len(l.state.validators), "totalDelegated": l.state.lastEpochTotalDelegatedAmount}).Info("LARA STATE: ")
+	log.WithFields(log.Fields{"delegator": l.delegator.Hex(), "currentBlock": currentBlock, "lastRebalance": l.state.lastRebalance, "lastSnapshotBlock": l.state.lastSnapshot, "nextSnapshotBlock": nextSnapshot, "nodesDelegatedTo": len(l.state.validators), "totalDelegated": l.state.lastEpochTotalDelegatedAmount}).Info("LARA STATE: ")
 }
 
 func (l *Lara) Snapshot() {
