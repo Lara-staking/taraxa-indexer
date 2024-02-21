@@ -1,4 +1,4 @@
-openapi: 3.0.0
+openapi: 3.1.0
 info:
   version: 1.0.0
   title: Taraxa Indexer
@@ -154,6 +154,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Validator"
+        default:
+          description: |
+            Unexpected error
+  /validators/{address}/score:
+    get:
+      tags:
+        - ValidatorRating
+      summary: "Returns rating info for the validator"
+      description: |
+        Returns rating info for the validator
+      operationId: "getValidatorScore"
+      parameters:
+        - $ref: "#/components/parameters/addressParam"
+        - $ref: "#/components/parameters/blockNumParam"
+      responses:
+        "200":
+          description: |
+            A JSON object with info about validator scores
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidatorScores"
         default:
           description: |
             Unexpected error
@@ -486,6 +508,37 @@ components:
           x-oapi-codegen-extra-tags:
             rlp: "-"
             json: "registrationBlock,omitempty"
+    ValidatorScores:
+      type: object
+      required:
+        - address
+        - blockHeight
+        - score
+        - adjusted_apy
+        - commission
+        - continuity
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        blockHeight:
+          type: integer
+          format: uint64
+          example: 1
+        score:
+          type: integer
+          format: uint64
+          example: 1
+          x-oapi-codegen-extra-tags:
+            rlp: "-"
+        adjusted_apy:
+          type: string
+          example: "0,1999"
+        commission:
+          type: string
+          example: "0,1999"
+        continuity:
+          type: string
+          example: "0,1999"
     EventLog:
       type: object
       required:

@@ -27,6 +27,7 @@ type Storage interface {
 	GetTransactionLogs(hash string) models.TransactionLogsResponse
 	GetValidatorYield(validator string, block uint64) (res Yield)
 	GetTotalYield(block uint64) (res Yield)
+	GetValidatorScore(validator string, block uint64) models.ValidatorScores
 }
 
 func GetTotal[T Paginated](s Storage, address string) (r uint64) {

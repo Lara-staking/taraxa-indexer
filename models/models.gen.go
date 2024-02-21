@@ -160,6 +160,16 @@ type Validator struct {
 	Yield             string  `json:"yield,omitempty" rlp:"-"`
 }
 
+// ValidatorScores defines model for ValidatorScores.
+type ValidatorScores struct {
+	Address     Address `json:"address"`
+	AdjustedApy string  `json:"adjusted_apy"`
+	BlockHeight uint64  `json:"blockHeight"`
+	Commission  string  `json:"commission"`
+	Continuity  string  `json:"continuity"`
+	Score       uint64  `json:"score" rlp:"-"`
+}
+
 // ValidatorsPaginatedResponse defines model for ValidatorsPaginatedResponse.
 type ValidatorsPaginatedResponse = PaginatedResponse
 
@@ -264,4 +274,10 @@ type GetValidatorsTotalParams struct {
 type GetValidatorParams struct {
 	// Week Week to filter by
 	Week *WeekParam `form:"week,omitempty" json:"week,omitempty"`
+}
+
+// GetValidatorScoreParams defines parameters for GetValidatorScore.
+type GetValidatorScoreParams struct {
+	// BlockNumber Block Number
+	BlockNumber *BlockNumParam `form:"blockNumber,omitempty" json:"blockNumber,omitempty"`
 }

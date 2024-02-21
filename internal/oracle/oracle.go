@@ -76,6 +76,9 @@ func (o *Oracle) PushValidators(validators []RawValidator) {
 		commission := uint64(validatorData.Commission)
 		addr := o.storage.GetAddressStats(validator.Address.Hex())
 		registrationBlock, err := o.FetchValidatorRegistrationBlock(validator.Address)
+		if err != nil {
+			log.Warnf("Failed to fetch validator registration block: %v", err)
+		}
 
 		yieldedValidator := YieldedValidator{
 			Account:           validator.Address,
@@ -113,10 +116,13 @@ func (o *Oracle) pushDataToContract() {
 	if err != nil {
 		log.Fatalf("Failed to get current block: %v", err)
 	}
+	batch := o.storage.NewBatch()
 	for _, validator := range o.LatestValidators {
 		data := validator.ToNodeData(currentBlock)
+		validator.SaveRating(batch, currentBlock)
 		validatorDatas = append(validatorDatas, data)
 	}
+	batch.CommitBatch()
 
 	// sort data by rating in descending order
 	sort.Slice(validatorDatas, func(i, j int) bool {
