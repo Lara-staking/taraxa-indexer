@@ -33,6 +33,7 @@ const totalSupplyPrefix = "ts"
 const internalTransactionsPrefix = "i"
 const yieldPrefix = "y"
 const validatorsYieldPrefix = "vy"
+const validatorsRatingsPrefix = "vr"
 const multipliedYieldPrefix = "my"
 const PeriodRewardsPrefix = "pr"
 
@@ -129,6 +130,8 @@ func GetPrefix(o interface{}) (ret string) {
 		ret = multipliedYieldPrefix
 	case *storage.PeriodRewards, storage.PeriodRewards:
 		ret = PeriodRewardsPrefix
+	case *models.ValidatorScores, models.ValidatorScores:
+		ret = validatorsRatingsPrefix
 	// hack if we aren't passing original type directly to this function, but passing interface{} from other function
 	case *interface{}:
 		ret = GetPrefix(*o.(*interface{}))
@@ -227,6 +230,15 @@ func (s *Storage) addToDB(key []byte, o interface{}) error {
 
 	err = s.add(key, b)
 	return err
+}
+
+func (s *Storage) GetValidatorScore(validator_address string, block uint64) models.ValidatorScores {
+	ptr := new(models.ValidatorScores)
+	err := s.GetFromDB(ptr, getKey(GetPrefix(ptr), validator_address, block))
+	if err != nil && err != pebble.ErrNotFound {
+		log.WithError(err).Fatal("ValidatorScores failed")
+	}
+	return *ptr
 }
 
 func (s *Storage) GetTotalSupply() *storage.TotalSupply {

@@ -12,6 +12,7 @@ import (
 	"github.com/Taraxa-project/taraxa-indexer/internal/common"
 	"github.com/Taraxa-project/taraxa-indexer/internal/storage"
 	"github.com/Taraxa-project/taraxa-indexer/internal/storage/pebble"
+	"github.com/Taraxa-project/taraxa-indexer/models"
 	. "github.com/Taraxa-project/taraxa-indexer/models"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/labstack/echo/v4"
@@ -203,6 +204,10 @@ func (a *ApiHandler) GetInternalTransactions(ctx echo.Context, hash HashParam) e
 
 func (a *ApiHandler) GetTransactionLogs(ctx echo.Context, hash HashParam) error {
 	return ctx.JSON(http.StatusOK, a.storage.GetTransactionLogs(hash))
+}
+
+func (a *ApiHandler) GetValidatorScore(ctx echo.Context, address AddressParam, params models.GetValidatorScoreParams) error {
+	return ctx.JSON(http.StatusOK, a.storage.GetValidatorScore(address, *params.BlockNumber))
 }
 
 func (a *ApiHandler) getAddressYield(address AddressParam, block *uint64) (resp *YieldResponse, err error) {

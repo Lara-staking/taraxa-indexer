@@ -1,12 +1,11 @@
 package oracle
 
 import (
-	"encoding/csv"
 	"math/big"
-	"os"
 	"strconv"
 
 	apy_oracle "github.com/Taraxa-project/taraxa-indexer/abi/oracle"
+	"github.com/Taraxa-project/taraxa-indexer/internal/storage"
 	"github.com/ethereum/go-ethereum/common"
 	log "github.com/sirupsen/logrus"
 )
@@ -43,14 +42,14 @@ func (y *YieldedValidator) ToRawValidator() RawValidator {
 }
 
 func (v *YieldedValidator) ToNodeData(currentBlock uint64) NodeData {
-	rating64, from, to := v.calculateRating(currentBlock)
+	vRating, from, to := v.calculateRating(currentBlock)
 	yield, err := strconv.ParseFloat(v.Yield, 64)
 	if err != nil {
 		log.Fatalf("Failed to parse yield: %v", err)
 	}
 
 	return NodeData{
-		Rating:    big.NewInt(rating64),
+		Rating:    big.NewInt(int64(vRating.Score)),
 		Account:   v.Account,
 		Rank:      v.Rank,
 		Apy:       uint16(yield * 1000),
@@ -59,7 +58,13 @@ func (v *YieldedValidator) ToNodeData(currentBlock uint64) NodeData {
 	}
 }
 
-func (validator *YieldedValidator) calculateRating(currentBlock uint64) (int64, uint64, uint64) {
+func (v *YieldedValidator) SaveRating(batch storage.Batch, currentBlock uint64) {
+	vRating, _, _ := v.calculateRating(currentBlock)
+	model := vRating.ToModel()
+	batch.AddToBatch(model, v.Account.Hex(), vRating.BlockHeight)
+}
+
+func (validator *YieldedValidator) calculateRating(currentBlock uint64) (vRating storage.ValidatorRating, from, to uint64) {
 	commission_float := float64(*validator.Commisson)
 	yield_float, err := strconv.ParseFloat(validator.Yield, 64)
 	if err != nil {
@@ -72,27 +77,15 @@ func (validator *YieldedValidator) calculateRating(currentBlock uint64) (int64, 
 	//w1 * (APY) - (Commission * w2) + w3 * Continuity + w4 * stake
 	score := float64(0.4)*adjusted_apy - float64(0.1)*commission_float + float64(0.5)*continuity
 	log.WithFields(log.Fields{"validator": validator.Account.String(), "currentBlock": currentBlock, "score": score, "continuity": continuity, "apy": adjusted_apy, "commission": commission_float}).Info("Validator score")
-	file, err := os.OpenFile("validator_scores.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("Failed to open csv file: %v", err)
-	}
-	defer file.Close()
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	record := []string{
-		validator.Account.String(),
-		strconv.FormatFloat(score, 'f', 6, 64),
-		strconv.FormatFloat(adjusted_apy, 'f', 6, 64),
-		strconv.FormatFloat(commission_float, 'f', 6, 64),
-		strconv.FormatFloat(continuity, 'f', 6, 64),
-		strconv.FormatUint(currentBlock, 10),
-	}
-	err = writer.Write(record)
-	if err != nil {
-		log.Fatalf("Failed to write to csv file: %v", err)
+	vRating = storage.ValidatorRating{
+		Address:      validator.Account.Hex(),
+		BlockHeight:  currentBlock,
+		Score:        uint64(score * 1000),
+		Adjusted_apy: adjusted_apy,
+		Commission:   commission_float,
+		Continuity:   continuity,
 	}
 
-	return int64(score * 1000), validator.RegistrationBlock, currentBlock
+	return vRating, validator.RegistrationBlock, currentBlock
 }

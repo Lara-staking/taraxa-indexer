@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -173,4 +174,28 @@ type PeriodRewards struct {
 
 func FormatIntToKey(i uint64) string {
 	return fmt.Sprintf("%020d", i)
+}
+
+type ValidatorRating struct {
+	Address      string
+	BlockHeight  uint64
+	Score        uint64
+	Adjusted_apy float64
+	Commission   float64
+	Continuity   float64
+}
+
+func (v *ValidatorRating) GetKey() string {
+	return v.Address
+}
+
+func (v *ValidatorRating) ToModel() models.ValidatorScores {
+	return models.ValidatorScores{
+		Address:     v.Address,
+		BlockHeight: v.BlockHeight,
+		Score:       v.Score,
+		AdjustedApy: strconv.FormatFloat(v.Adjusted_apy, 'f', -1, 64),
+		Commission:  strconv.FormatFloat(v.Commission, 'f', -1, 64),
+		Continuity:  strconv.FormatFloat(v.Continuity, 'f', -1, 64),
+	}
 }
