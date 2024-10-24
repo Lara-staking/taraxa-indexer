@@ -75,30 +75,46 @@ func (validator *YieldedValidator) calculateRating(currentBlock uint64) (int64, 
 		score = 0
 	} else {
 		//w1 * (APY) - (Commission * w2) + w3 * Continuity + w4 * stake
-		score = float64(0.4)*adjusted_apy - float64(0.1)*commission_float + float64(0.5)*continuity
+
+		score = (1 - commission_percentage) * yield_float * 100
 	}
 	log.WithFields(log.Fields{"validator": validator.Account.String(), "currentBlock": currentBlock, "score": score, "continuity": continuity, "apy": adjusted_apy, "commission": commission_float}).Info("Validator score")
-	file, err := os.OpenFile("validator_scores.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("Failed to open csv file: %v", err)
-	}
-	defer file.Close()
+	if score > 0 {
+		file, err := os.OpenFile("validator_scores.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatalf("Failed to open csv file: %v", err)
+		}
+		defer file.Close()
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
+		writer := csv.NewWriter(file)
+		defer writer.Flush()
 
-	record := []string{
-		validator.Account.String(),
-		strconv.FormatFloat(score, 'f', 6, 64),
-		strconv.FormatFloat(adjusted_apy, 'f', 6, 64),
-		strconv.FormatFloat(commission_float, 'f', 6, 64),
-		strconv.FormatFloat(continuity, 'f', 6, 64),
-		strconv.FormatUint(currentBlock, 10),
-	}
-	err = writer.Write(record)
-	if err != nil {
-		log.Fatalf("Failed to write to csv file: %v", err)
+		// Check if the file is empty to write the header
+		fileInfo, err := file.Stat()
+		if err != nil {
+			log.Fatalf("Failed to get file info: %v", err)
+		}
+		if fileInfo.Size() == 0 {
+			header := []string{"Account", "Score", "Adjusted APY", "Commission", "Continuity", "Current Block"}
+			err = writer.Write(header)
+			if err != nil {
+				log.Fatalf("Failed to write header to csv file: %v", err)
+			}
+		}
+
+		record := []string{
+			validator.Account.String(),
+			strconv.FormatFloat(score, 'f', 6, 64),
+			strconv.FormatFloat(adjusted_apy, 'f', 6, 64),
+			strconv.FormatFloat(commission_float, 'f', 6, 64),
+			strconv.FormatFloat(continuity, 'f', 6, 64),
+			strconv.FormatUint(currentBlock, 10),
+		}
+		err = writer.Write(record)
+		if err != nil {
+			log.Fatalf("Failed to write to csv file: %v", err)
+		}
 	}
 
-	return int64(score * 1000), validator.RegistrationBlock, currentBlock
+	return int64(score), validator.RegistrationBlock, currentBlock
 }
