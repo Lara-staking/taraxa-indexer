@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,14 +27,13 @@ import (
 )
 
 type Oracle struct {
-	storage          pebble.Storage
-	Eth              *ethclient.Client
-	signer           *bind.TransactOpts
-	oracleAddress    string
-	chainId          int
-	contract         *apy_oracle.ApyOracle
-	validatorsMutex  sync.Mutex
-	LatestValidators []YieldedValidator
+	storage         pebble.Storage
+	Eth             *ethclient.Client
+	signer          *bind.TransactOpts
+	oracleAddress   string
+	chainId         int
+	contract        *apy_oracle.ApyOracle
+	validatorsMutex sync.Mutex
 }
 
 func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chainId int, storage pebble.Storage) *Oracle {
@@ -52,13 +50,6 @@ func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chain
 	o.contract = contract
 	log.Info("Oracle initialized")
 	return o
-}
-
-func (o *Oracle) UpdateValidators(validators []YieldedValidator) {
-	log.Infof("Updating validators: %d", len(validators))
-	log.Infof("Validators before: %v", len(o.LatestValidators))
-	o.LatestValidators = validators
-	o.pushDataToContract()
 }
 
 func (o *Oracle) PushValidators(validators []RawValidator) {
@@ -92,33 +83,13 @@ func (o *Oracle) PushValidators(validators []RawValidator) {
 		}
 		yieldedValidators = append(yieldedValidators, yieldedValidator)
 	}
-	// sort by yield and add positions as rank and rating
-	for i := range yieldedValidators {
-		yieldedValidators[i].Rank = uint16(i + 1)
-		yield, err := strconv.ParseFloat(yieldedValidators[i].Yield, 64)
-		if err != nil {
-			log.Fatalf("Failed to parse yield: %v", err)
-		}
-		yieldInt := uint64(yield * 1000)
-		yieldedValidators[i].Rating = uint64(yieldedValidators[i].Rank) * yieldInt
-	}
 
-	// Sort by rating in descending order
-	sort.Slice(yieldedValidators, func(i, j int) bool {
-		return yieldedValidators[i].Rating > yieldedValidators[j].Rating
-	})
-
-	// Limit to the first 100 validators if the list is longer
-	if len(yieldedValidators) > 100 {
-		yieldedValidators = yieldedValidators[:100]
-	}
-
-	o.UpdateValidators(yieldedValidators)
 	log.Infof("Loading validators into oracle instance: %d", len(yieldedValidators))
+	o.pushDataToContract(yieldedValidators)
 }
 
-func (o *Oracle) pushDataToContract() {
-	if len(o.LatestValidators) == 0 {
+func (o *Oracle) pushDataToContract(yieldedValidators []YieldedValidator) {
+	if len(yieldedValidators) == 0 {
 		log.Warn("No validator data to push")
 		return
 	}
@@ -128,15 +99,26 @@ func (o *Oracle) pushDataToContract() {
 	if err != nil {
 		log.Fatalf("Failed to get current block: %v", err)
 	}
-	for _, validator := range o.LatestValidators {
+	for _, validator := range yieldedValidators {
 		data := validator.ToNodeData(currentBlock)
-		validatorDatas = append(validatorDatas, data)
+		if data.Rating.Cmp(big.NewInt(0)) > 0 {
+			validatorDatas = append(validatorDatas, data)
+		}
 	}
 
 	// sort data by rating in descending order
 	sort.Slice(validatorDatas, func(i, j int) bool {
 		return validatorDatas[i].Rating.Cmp(validatorDatas[j].Rating) == 1
 	})
+
+	for i := range validatorDatas {
+		validatorDatas[i].Rank = uint16(i + 1)
+	}
+
+	if len(validatorDatas) == 0 {
+		log.Warn("No validator data to push")
+		return
+	}
 
 	for {
 		nodeCount, err := o.contract.NodeCount(nil)
@@ -167,7 +149,7 @@ func (o *Oracle) pushDataToContract() {
 // FetchValidatorInfo fetches the ValidatorBasicInfo for a given validator address.
 func FetchValidatorInfo(client chain.EthereumClient, validatorAddress string) (*dpos_interface.DposInterfaceValidatorBasicInfo, error) {
 	if client == nil {
-		return nil, errors.New("Ethereum client is not available")
+		return nil, errors.New("ethereum client is not available")
 	}
 
 	// Define the contract address
