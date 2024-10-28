@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	// Import other necessary packages
@@ -26,14 +25,30 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type NodeData = apy_oracle.IApyOracleNodeData
+
+type YieldedValidator struct {
+	Account           common.Address
+	Rank              uint16
+	Rating            uint64
+	Yield             string
+	Commisson         *uint64
+	RegistrationBlock uint64
+	PbftCount         uint64
+}
+
+type RawValidator struct {
+	Address common.Address
+	Yield   string
+}
+
 type Oracle struct {
-	storage         pebble.Storage
-	Eth             *ethclient.Client
-	signer          *bind.TransactOpts
-	oracleAddress   string
-	chainId         int
-	contract        *apy_oracle.ApyOracle
-	validatorsMutex sync.Mutex
+	storage       pebble.Storage
+	Eth           *ethclient.Client
+	signer        *bind.TransactOpts
+	oracleAddress string
+	chainId       int
+	contract      *apy_oracle.ApyOracle
 }
 
 func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chainId int, storage pebble.Storage) *Oracle {
@@ -53,8 +68,6 @@ func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chain
 }
 
 func (o *Oracle) PushValidators(validators []RawValidator) {
-	o.validatorsMutex.Lock()
-	defer o.validatorsMutex.Unlock()
 	yieldedValidators := make([]YieldedValidator, 0)
 	for _, validator := range validators {
 		validatorData, err := FetchValidatorInfo(o.Eth, validator.Address.Hex())
@@ -81,6 +94,7 @@ func (o *Oracle) PushValidators(validators []RawValidator) {
 			PbftCount:         addr.PbftCount,
 			Rating:            0,
 		}
+		log.Infof("Validator info fetched for %s", validator.Address.Hex())
 		yieldedValidators = append(yieldedValidators, yieldedValidator)
 	}
 
@@ -93,6 +107,8 @@ func (o *Oracle) pushDataToContract(yieldedValidators []YieldedValidator) {
 		log.Warn("No validator data to push")
 		return
 	}
+
+	log.Infof("Pushing %d validators to contract", len(yieldedValidators))
 
 	validatorDatas := make([]NodeData, 0)
 	currentBlock, err := o.Eth.BlockNumber(context.Background())
@@ -238,8 +254,6 @@ func (o *Oracle) FetchValidatorRegistrationBlock(validatorAddress common.Address
 	}
 	return 0, nil
 }
-
-// go run main.go --blockchain_ws=ws://localhost:8777 --log_level=debug --chain_id=842 --signing_key=472a3f59fe3d81cda76dbb2a64825e46c4b067ae559cd4dfc784869da80bd05e --oracle_address=0x4076f9669fd33e55545823c4cB9f1abA7cfa480B
 
 func MakeMockOracle(eth *ethclient.Client) *Oracle {
 	return &Oracle{

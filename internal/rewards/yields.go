@@ -2,6 +2,8 @@ package rewards
 
 import (
 	"math/big"
+	"sort"
+	"strconv"
 
 	"github.com/Taraxa-project/taraxa-indexer/internal/common"
 	"github.com/Taraxa-project/taraxa-indexer/internal/oracle"
@@ -94,7 +96,17 @@ func (r *Rewards) processValidatorsIntervalYield(batch storage.Batch) {
 		yield := GetYieldForInterval(sum, r.config.Chain.BlocksPerYear, int64(r.config.ValidatorsYieldSavingInterval))
 		log.WithFields(log.Fields{"validator": val, "yield": yield}).Info("processValidatorsIntervalYield")
 		batch.Add(&storage.Yield{Yield: common.FormatFloat(yield)}, val, r.blockNum)
-		yields = append(yields, oracle.RawValidator{Yield: common.FormatFloat(yield), Address: ethcommon.HexToAddress(val)})
+		if yield > 0 {
+			yields = append(yields, oracle.RawValidator{Yield: common.FormatFloat(yield), Address: ethcommon.HexToAddress(val)})
+		}
 	}
-	r.oracle.PushValidators(yields)
+	// sort yields by yield
+	sort.Slice(yields, func(i, j int) bool {
+		yieldI, _ := strconv.ParseFloat(yields[i].Yield, 32)
+		yieldJ, _ := strconv.ParseFloat(yields[j].Yield, 32)
+		return yieldI > yieldJ
+	})
+	go func() {
+		r.oracle.PushValidators(yields[:30])
+	}()
 }

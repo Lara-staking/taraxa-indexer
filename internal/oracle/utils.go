@@ -6,27 +6,8 @@ import (
 	"os"
 	"strconv"
 
-	apy_oracle "github.com/Taraxa-project/taraxa-indexer/abi/oracle"
-	"github.com/ethereum/go-ethereum/common"
 	log "github.com/sirupsen/logrus"
 )
-
-type NodeData = apy_oracle.IApyOracleNodeData
-
-type YieldedValidator struct {
-	Account           common.Address
-	Rank              uint16
-	Rating            uint64
-	Yield             string
-	Commisson         *uint64
-	RegistrationBlock uint64
-	PbftCount         uint64
-}
-
-type RawValidator struct {
-	Address common.Address
-	Yield   string
-}
 
 func (r *RawValidator) ToYieldedValidator() YieldedValidator {
 	return YieldedValidator{
