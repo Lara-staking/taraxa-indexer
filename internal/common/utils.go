@@ -157,7 +157,6 @@ func DecodePaddedAddress(hexStr string) (common.Address, error) {
 	if err != nil {
 		return common.Address{}, err
 	}
-
 	// Convert bytes to big.Int.
 	bigInt := new(big.Int).SetBytes(bytes)
 	// convert to uint64
