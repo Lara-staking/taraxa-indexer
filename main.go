@@ -55,7 +55,7 @@ func init() {
 	sync_queue_limit = flag.Int("sync_queue_limit", 10, "limit of blocks in the sync queue")
 	oracle_address = flag.String("oracle_address", "0xd6F1DbeC984e845d6088Ca9de6cdfD6670F2c300", "oracles address")
 	lara_address = flag.String("lara_address", "0x2057B7D8Cf6C5750e018F69C49dd65e5454e1016", "lara address")
-	signing_key = flag.String("signing_key", "bed7a596c711777a263cd151cec44906122e82379c607a061b45a2e03da30485", "signing key")
+	signing_key = flag.String("signing_key", "", "signing key")
 	graphQLEndpoint = flag.String("graphQLEndpoint", "https://indexer.testnet.taraxa.io/subgraphs/name/Liquid-staking/lara-subgraph", "graphql endpoint")
 	flag.Parse()
 
@@ -149,7 +149,9 @@ func main() {
 		log.WithFields(log.Fields{"signing_key": *signing_key, "oracle_address": *oracle_address, "lara_address": *lara_address}).Fatal("Oracle address, Lara address and signing key should be both set but both empty")
 	}
 
-	indexer := indexer.NewIndexer(*blockchain_ws, st, c)
+	indexerFullySynced := make(chan bool)
+
+	indexer := indexer.NewIndexer(*blockchain_ws, st, c, indexerFullySynced)
 	log.Info("Indexer initialized")
 	rpc, err := ethclient.Dial(*blockchain_ws)
 	if err != nil {
@@ -159,8 +161,13 @@ func main() {
 	lara := lara.MakeLara(rpc, *signing_key, *lara_address, *oracle_address, *graphQLEndpoint, *chain_id)
 	log.Info("Lara initialized")
 	o := oracle.MakeOracle(rpc, *signing_key, *oracle_address, *chain_id, *st)
+
 	go indexer.Run(*blockchain_ws, st, c, o)
-	go lara.Run()
+
+	go func() {
+		<-indexer.IndexerFullySynced
+		lara.Run(*validators_yield_saving_interval)
+	}()
 	// start a http server for prometheus on a separate go routine
 	go metrics.RunPrometheusServer(":" + strconv.FormatInt(int64(*metrics_port), 10))
 

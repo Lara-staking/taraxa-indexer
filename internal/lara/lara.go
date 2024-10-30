@@ -66,19 +66,19 @@ func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_add
 	l.contract = contract
 	l.graphQLEndpoint = graphQLEndpoint
 	l.SyncState()
+	return l
+}
+
+func (l *Lara) Run(interval int) {
+	if l.Eth == nil {
+		log.Fatalf("Eth client is nil")
+	}
 	done := make(chan bool)
 	go l.FetchAndDistributePastRewards(done)
 	<-done // Wait for FetchAndDistributePastRewards to finish
 
 	l.DistributeRewardsForLastSnapshot()
-	return l
-}
-
-func (l *Lara) Run() {
-	if l.Eth == nil {
-		log.Fatalf("Eth client is nil")
-	}
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(time.Duration(interval*3) * time.Second)
 	for range ticker.C {
 		ctx := context.Background()
 		currentBlock, err := l.Eth.BlockNumber(ctx)
