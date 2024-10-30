@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	// Import other necessary packages
@@ -68,33 +69,49 @@ func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chain
 }
 
 func (o *Oracle) PushValidators(validators []RawValidator) {
-	yieldedValidators := make([]YieldedValidator, 0)
+	var yieldedValidators []YieldedValidator
+	var wg sync.WaitGroup
+	results := make(chan YieldedValidator)
 	for _, validator := range validators {
-		validatorData, err := FetchValidatorInfo(o.Eth, validator.Address.Hex())
-		if err != nil {
-			if err.Error() == "Validator does not exist" {
-				continue
+		wg.Add(1)
+		go func(validator RawValidator) {
+			defer wg.Done()
+
+			validatorData, err := FetchValidatorInfo(o.Eth, validator.Address.Hex())
+			if err != nil {
+				if err.Error() == "Validator does not exist" {
+					return
+				}
+				log.Fatalf("Failed to fetch validator info: %v", err)
 			}
-			log.Fatalf("Failed to fetch validator info: %v", err)
-		}
-		commission := uint64(validatorData.Commission)
-		addr := o.storage.GetAddressStats(validator.Address.Hex())
-		registrationBlock, err := o.FetchValidatorRegistrationBlock(validator.Address)
+			commission := uint64(validatorData.Commission)
+			addr := o.storage.GetAddressStats(validator.Address.Hex())
+			registrationBlock, err := o.FetchValidatorRegistrationBlock(validator.Address)
 
-		if err != nil {
-			log.Fatalf("Failed to fetch validator registration block: %v", err)
-		}
+			if err != nil {
+				log.Fatalf("Failed to fetch validator registration block: %v", err)
+			}
 
-		yieldedValidator := YieldedValidator{
-			Account:           validator.Address,
-			Yield:             validator.Yield,
-			Commisson:         &commission,
-			Rank:              0,
-			RegistrationBlock: registrationBlock,
-			PbftCount:         addr.PbftCount,
-			Rating:            0,
-		}
-		log.Infof("Validator info fetched for %s", validator.Address.Hex())
+			yieldedValidator := YieldedValidator{
+				Account:           validator.Address,
+				Yield:             validator.Yield,
+				Commisson:         &commission,
+				Rank:              0,
+				RegistrationBlock: registrationBlock,
+				PbftCount:         addr.PbftCount,
+				Rating:            0,
+			}
+			log.Infof("Validator info fetched for %s", validator.Address.Hex())
+			results <- yieldedValidator
+		}(validator)
+	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results from the channel
+	for yieldedValidator := range results {
 		yieldedValidators = append(yieldedValidators, yieldedValidator)
 	}
 
