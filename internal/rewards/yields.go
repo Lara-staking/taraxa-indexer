@@ -1,6 +1,7 @@
 package rewards
 
 import (
+	"context"
 	"math/big"
 	"sort"
 	"strconv"
@@ -99,6 +100,15 @@ func (r *Rewards) processValidatorsIntervalYield(batch storage.Batch) {
 		if yield > 0 {
 			yields = append(yields, oracle.RawValidator{Yield: common.FormatFloat(yield), Address: ethcommon.HexToAddress(val)})
 		}
+	}
+	currentBlock := r.storage.GetFinalizationData().PbftCount
+	chainHead, err := r.oracle.Eth.HeaderByNumber(context.Background(), nil)
+	if err != nil {
+		log.WithError(err).Fatal("Failed to get chain head")
+	}
+	if currentBlock != chainHead.Number.Uint64() {
+		log.WithFields(log.Fields{"currentBlock": currentBlock, "chainHead": chainHead.Number.Uint64()}).Warn("Current block does not match chain head, skipping Oracle push")
+		return
 	}
 	// sort yields by yield
 	sort.Slice(yields, func(i, j int) bool {
