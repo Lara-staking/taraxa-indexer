@@ -22,7 +22,6 @@ func NewManager(s *pebble.Storage, blockchain_ws string) *Manager {
 		storage: s,
 	}
 	m.RegisterMigration(&FixDposBalance{id: "0_fix_dpos_balance", blockchain_ws: blockchain_ws})
-	m.RegisterMigration(&AddCommission{id: "4_add_commission_to_stats", blockchain_ws: blockchain_ws})
 	return &m
 }
 
