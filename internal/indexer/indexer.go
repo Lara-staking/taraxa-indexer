@@ -119,7 +119,6 @@ func (i *Indexer) sync() error {
 		return p_err
 	}
 	if start >= end {
-		i.IndexerFullySynced <- true
 		return nil
 	}
 	queue_limit := i.config.SyncQueueLimit
@@ -165,6 +164,8 @@ func (i *Indexer) run() error {
 	if err != nil {
 		return err
 	}
+	log.Info("Starting Lara instance")
+	i.IndexerFullySynced <- true
 
 	for {
 		select {
