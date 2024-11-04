@@ -1,10 +1,11 @@
 package rewards
 
 import (
-	"context"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/Taraxa-project/taraxa-indexer/internal/common"
 	"github.com/Taraxa-project/taraxa-indexer/internal/oracle"
@@ -101,22 +102,40 @@ func (r *Rewards) processValidatorsIntervalYield(batch storage.Batch) {
 			yields = append(yields, oracle.RawValidator{Yield: common.FormatFloat(yield), Address: ethcommon.HexToAddress(val)})
 		}
 	}
-	currentBlock := r.storage.GetFinalizationData().PbftCount
-	chainHead, err := r.oracle.Eth.HeaderByNumber(context.Background(), nil)
-	if err != nil {
-		log.WithError(err).Fatal("Failed to get chain head")
-	}
-	if currentBlock != chainHead.Number.Uint64() {
-		log.WithFields(log.Fields{"currentBlock": currentBlock, "chainHead": chainHead.Number.Uint64()}).Warn("Current block does not match chain head, skipping Oracle push")
-		return
-	}
-	// sort yields by yield
-	sort.Slice(yields, func(i, j int) bool {
-		yieldI, _ := strconv.ParseFloat(yields[i].Yield, 32)
-		yieldJ, _ := strconv.ParseFloat(yields[j].Yield, 32)
-		return yieldI > yieldJ
-	})
+	// currentBlock := r.storage.GetFinalizationData().PbftCount
+	// chainHead, err := r.oracle.Eth.HeaderByNumber(context.Background(), nil)
+	// if err != nil {
+	// 	log.WithError(err).Fatal("Failed to get chain head")
+	// }
+	// if currentBlock < chainHead.Number.Uint64()-50 {
+	// 	log.WithFields(log.Fields{"currentBlock": currentBlock, "chainHead": chainHead.Number.Uint64()}).Warn("Current block not close to chain head, skipping Oracle push")
+	// 	return
+	// }
 	go func() {
-		r.oracle.PushValidators(yields[:30])
+		nonFullCommissionValidators := []string{
+			"0x386fd3885c05b30927be3f3cca08dfbc20fa7159",
+			"0x17d442e3e16e8df269e5970e7099cf37a433f300",
+			"0x87acc7c55916285646e6509fcb9154a8b34cda25",
+			"0x4f1c855b7c23f0632bafa1db178610c852d01c25",
+			"0xf302a2808c8b0998992ed59ee5210c95f8c6cb52",
+			"0x523c52ea0d5180fb9e47572b889cff04e8758a89",
+		}
+		// remove all full commission validators from the list
+		filteredYields := []oracle.RawValidator{}
+		for _, v := range yields {
+			if slices.Contains(nonFullCommissionValidators, strings.ToLower(v.Address.Hex())) {
+				filteredYields = append(filteredYields, v)
+			}
+		}
+
+		log.WithFields(log.Fields{"filteredYields": len(filteredYields)}).Info("filteredYields has been filtered")
+
+		// sort yields by yield
+		sort.Slice(filteredYields, func(i, j int) bool {
+			yieldI, _ := strconv.ParseFloat(filteredYields[i].Yield, 32)
+			yieldJ, _ := strconv.ParseFloat(filteredYields[j].Yield, 32)
+			return yieldI > yieldJ
+		})
+		r.oracle.PushValidators(filteredYields)
 	}()
 }

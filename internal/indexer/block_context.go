@@ -123,7 +123,7 @@ func (bc *blockContext) checkIndexedBalances() {
 			}
 			chain_balance := common.ParseStringToBigInt(b)
 			if balance.Cmp(chain_balance) != 0 {
-				log.WithFields(log.Fields{"address": address, "balance": balance, "chain_balance": chain_balance}).Error("Balance check failed")
+				log.WithFields(log.Fields{"address": address, "balance": balance, "chain_balance": chain_balance}).Warn("Balance check failed")
 			}
 		})
 	}
