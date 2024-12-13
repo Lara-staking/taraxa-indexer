@@ -11,28 +11,29 @@
     },
     {
       "type": "function",
+      "name": "acceptOwnership",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
       "name": "apyOracle",
       "inputs": [],
-      "outputs": [
-        { "name": "", "type": "address", "internalType": "contract IApyOracle" }
-      ],
+      "outputs": [{ "name": "", "type": "address", "internalType": "contract IApyOracle" }],
       "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "batchCancelUndelegate",
-      "inputs": [
-        { "name": "ids", "type": "uint64[]", "internalType": "uint64[]" }
-      ],
+      "inputs": [{ "name": "ids", "type": "uint64[]", "internalType": "uint64[]" }],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
     {
       "type": "function",
       "name": "batchConfirmUndelegate",
-      "inputs": [
-        { "name": "ids", "type": "uint64[]", "internalType": "uint64[]" }
-      ],
+      "inputs": [{ "name": "ids", "type": "uint64[]", "internalType": "uint64[]" }],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
@@ -60,9 +61,7 @@
     {
       "type": "function",
       "name": "compound",
-      "inputs": [
-        { "name": "amount", "type": "uint256", "internalType": "uint256" }
-      ],
+      "inputs": [{ "name": "amount", "type": "uint256", "internalType": "uint256" }],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
@@ -87,13 +86,7 @@
       "type": "function",
       "name": "dposContract",
       "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "address",
-          "internalType": "contract DposInterface"
-        }
-      ],
+      "outputs": [{ "name": "", "type": "address", "internalType": "contract DposInterface" }],
       "stateMutability": "view"
     },
     {
@@ -107,22 +100,10 @@
       "type": "function",
       "name": "initialize",
       "inputs": [
-        {
-          "name": "_sttaraToken",
-          "type": "address",
-          "internalType": "address"
-        },
-        {
-          "name": "_dposContract",
-          "type": "address",
-          "internalType": "address"
-        },
+        { "name": "_sttaraToken", "type": "address", "internalType": "address" },
+        { "name": "_dposContract", "type": "address", "internalType": "address" },
         { "name": "_apyOracle", "type": "address", "internalType": "address" },
-        {
-          "name": "_treasuryAddress",
-          "type": "address",
-          "internalType": "address"
-        }
+        { "name": "_treasuryAddress", "type": "address", "internalType": "address" }
       ],
       "outputs": [],
       "stateMutability": "nonpayable"
@@ -130,9 +111,7 @@
     {
       "type": "function",
       "name": "isValidatorRegistered",
-      "inputs": [
-        { "name": "validator", "type": "address", "internalType": "address" }
-      ],
+      "inputs": [{ "name": "validator", "type": "address", "internalType": "address" }],
       "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
       "stateMutability": "view"
     },
@@ -174,6 +153,13 @@
     {
       "type": "function",
       "name": "owner",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "pendingOwner",
       "inputs": [],
       "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
       "stateMutability": "view"
@@ -223,16 +209,8 @@
     {
       "type": "function",
       "name": "requestUndelegate",
-      "inputs": [
-        { "name": "amount", "type": "uint256", "internalType": "uint256" }
-      ],
-      "outputs": [
-        {
-          "name": "undelegation_ids",
-          "type": "uint64[]",
-          "internalType": "uint64[]"
-        }
-      ],
+      "inputs": [{ "name": "amount", "type": "uint256", "internalType": "uint256" }],
+      "outputs": [{ "name": "undelegation_ids", "type": "uint64[]", "internalType": "uint64[]" }],
       "stateMutability": "nonpayable"
     },
     {
@@ -245,9 +223,7 @@
     {
       "type": "function",
       "name": "setCommission",
-      "inputs": [
-        { "name": "_commission", "type": "uint256", "internalType": "uint256" }
-      ],
+      "inputs": [{ "name": "_commission", "type": "uint256", "internalType": "uint256" }],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
@@ -264,13 +240,7 @@
     {
       "type": "function",
       "name": "setEpochDuration",
-      "inputs": [
-        {
-          "name": "_epochDuration",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
+      "inputs": [{ "name": "_epochDuration", "type": "uint256", "internalType": "uint256" }],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
@@ -278,11 +248,7 @@
       "type": "function",
       "name": "setMaxValidatorStakeCapacity",
       "inputs": [
-        {
-          "name": "_maxValidatorStakeCapacity",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
+        { "name": "_maxValidatorStakeCapacity", "type": "uint256", "internalType": "uint256" }
       ],
       "outputs": [],
       "stateMutability": "nonpayable"
@@ -290,53 +256,28 @@
     {
       "type": "function",
       "name": "setMinStakeAmount",
-      "inputs": [
-        {
-          "name": "_minStakeAmount",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
+      "inputs": [{ "name": "_minStakeAmount", "type": "uint256", "internalType": "uint256" }],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
     {
       "type": "function",
       "name": "setTreasuryAddress",
-      "inputs": [
-        {
-          "name": "_treasuryAddress",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
+      "inputs": [{ "name": "_treasuryAddress", "type": "address", "internalType": "address" }],
       "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "snapshot",
-      "inputs": [],
-      "outputs": [
-        { "name": "id", "type": "uint256", "internalType": "uint256" }
-      ],
       "stateMutability": "nonpayable"
     },
     {
       "type": "function",
       "name": "stTaraToken",
       "inputs": [],
-      "outputs": [
-        { "name": "", "type": "address", "internalType": "contract IstTara" }
-      ],
+      "outputs": [{ "name": "", "type": "address", "internalType": "contract IstTara" }],
       "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "stake",
-      "inputs": [
-        { "name": "amount", "type": "uint256", "internalType": "uint256" }
-      ],
+      "inputs": [{ "name": "amount", "type": "uint256", "internalType": "uint256" }],
       "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
       "stateMutability": "payable"
     },
@@ -353,9 +294,7 @@
     {
       "type": "function",
       "name": "transferOwnership",
-      "inputs": [
-        { "name": "newOwner", "type": "address", "internalType": "address" }
-      ],
+      "inputs": [{ "name": "newOwner", "type": "address", "internalType": "address" }],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
@@ -388,23 +327,11 @@
           "components": [
             { "name": "stake", "type": "uint256", "internalType": "uint256" },
             { "name": "block", "type": "uint64", "internalType": "uint64" },
-            {
-              "name": "validator",
-              "type": "address",
-              "internalType": "address"
-            },
-            {
-              "name": "validator_exists",
-              "type": "bool",
-              "internalType": "bool"
-            }
+            { "name": "validator", "type": "address", "internalType": "address" },
+            { "name": "validator_exists", "type": "bool", "internalType": "bool" }
           ]
         },
-        {
-          "name": "undelegation_id",
-          "type": "uint64",
-          "internalType": "uint64"
-        }
+        { "name": "undelegation_id", "type": "uint64", "internalType": "uint64" }
       ],
       "stateMutability": "view"
     },
@@ -412,11 +339,7 @@
       "type": "function",
       "name": "upgradeToAndCall",
       "inputs": [
-        {
-          "name": "newImplementation",
-          "type": "address",
-          "internalType": "address"
-        },
+        { "name": "newImplementation", "type": "address", "internalType": "address" },
         { "name": "data", "type": "bytes", "internalType": "bytes" }
       ],
       "outputs": [],
@@ -426,12 +349,7 @@
       "type": "event",
       "name": "AllRewardsClaimed",
       "inputs": [
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        }
+        { "name": "amount", "type": "uint256", "indexed": true, "internalType": "uint256" }
       ],
       "anonymous": false
     },
@@ -439,12 +357,16 @@
       "type": "event",
       "name": "CommissionChanged",
       "inputs": [
-        {
-          "name": "newCommission",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        }
+        { "name": "newCommission", "type": "uint256", "indexed": true, "internalType": "uint256" }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "CommissionDiscountUpdated",
+      "inputs": [
+        { "name": "staker", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "discount", "type": "uint32", "indexed": false, "internalType": "uint32" }
       ],
       "anonymous": false
     },
@@ -452,16 +374,34 @@
       "type": "event",
       "name": "CommissionWithdrawn",
       "inputs": [
+        { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "amount", "type": "uint256", "indexed": true, "internalType": "uint256" }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "DelegationSynced",
+      "inputs": [
+        { "name": "account", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "stake", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "EpochDurationUpdated",
+      "inputs": [
         {
-          "name": "user",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
+          "name": "oldEpochDuration",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         },
         {
-          "name": "amount",
+          "name": "newEpochDuration",
           "type": "uint256",
-          "indexed": true,
+          "indexed": false,
           "internalType": "uint256"
         }
       ],
@@ -471,12 +411,44 @@
       "type": "event",
       "name": "Initialized",
       "inputs": [
+        { "name": "version", "type": "uint64", "indexed": false, "internalType": "uint64" }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "MaxValidatorStakeCapacityUpdated",
+      "inputs": [
+        { "name": "oldCapacity", "type": "uint256", "indexed": false, "internalType": "uint256" },
+        { "name": "newCapacity", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "MinStakeAmountUpdated",
+      "inputs": [
         {
-          "name": "version",
-          "type": "uint64",
+          "name": "oldMinStakeAmount",
+          "type": "uint256",
           "indexed": false,
-          "internalType": "uint64"
+          "internalType": "uint256"
+        },
+        {
+          "name": "newMinStakeAmount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
         }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "OwnershipTransferStarted",
+      "inputs": [
+        { "name": "previousOwner", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "newOwner", "type": "address", "indexed": true, "internalType": "address" }
       ],
       "anonymous": false
     },
@@ -484,18 +456,8 @@
       "type": "event",
       "name": "OwnershipTransferred",
       "inputs": [
-        {
-          "name": "previousOwner",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "newOwner",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        }
+        { "name": "previousOwner", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "newOwner", "type": "address", "indexed": true, "internalType": "address" }
       ],
       "anonymous": false
     },
@@ -503,18 +465,8 @@
       "type": "event",
       "name": "RedelegationRewardsClaimed",
       "inputs": [
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "validator",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        }
+        { "name": "amount", "type": "uint256", "indexed": true, "internalType": "uint256" },
+        { "name": "validator", "type": "address", "indexed": true, "internalType": "address" }
       ],
       "anonymous": false
     },
@@ -522,30 +474,10 @@
       "type": "event",
       "name": "RewardsClaimedForSnapshot",
       "inputs": [
-        {
-          "name": "snapshotId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "staker",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "reward",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "balance",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
+        { "name": "snapshotId", "type": "uint256", "indexed": true, "internalType": "uint256" },
+        { "name": "staker", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "reward", "type": "uint256", "indexed": true, "internalType": "uint256" },
+        { "name": "balance", "type": "uint256", "indexed": false, "internalType": "uint256" }
       ],
       "anonymous": false
     },
@@ -553,30 +485,14 @@
       "type": "event",
       "name": "SnapshotTaken",
       "inputs": [
-        {
-          "name": "snapshotId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
+        { "name": "snapshotId", "type": "uint256", "indexed": true, "internalType": "uint256" },
         {
           "name": "totalDelegation",
           "type": "uint256",
           "indexed": true,
           "internalType": "uint256"
         },
-        {
-          "name": "totalRewards",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "nextSnapshotBlock",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
+        { "name": "totalRewards", "type": "uint256", "indexed": true, "internalType": "uint256" }
       ],
       "anonymous": false
     },
@@ -584,18 +500,8 @@
       "type": "event",
       "name": "Staked",
       "inputs": [
-        {
-          "name": "user",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        }
+        { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "amount", "type": "uint256", "indexed": true, "internalType": "uint256" }
       ],
       "anonymous": false
     },
@@ -603,18 +509,8 @@
       "type": "event",
       "name": "TaraSent",
       "inputs": [
-        {
-          "name": "user",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        }
+        { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "amount", "type": "uint256", "indexed": true, "internalType": "uint256" }
       ],
       "anonymous": false
     },
@@ -622,12 +518,7 @@
       "type": "event",
       "name": "TreasuryChanged",
       "inputs": [
-        {
-          "name": "newTreasury",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        }
+        { "name": "newTreasury", "type": "address", "indexed": true, "internalType": "address" }
       ],
       "anonymous": false
     },
@@ -635,30 +526,10 @@
       "type": "event",
       "name": "Undelegated",
       "inputs": [
-        {
-          "name": "id",
-          "type": "uint64",
-          "indexed": true,
-          "internalType": "uint64"
-        },
-        {
-          "name": "user",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "validator",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        },
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
+        { "name": "id", "type": "uint64", "indexed": true, "internalType": "uint64" },
+        { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "validator", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256" }
       ],
       "anonymous": false
     },
@@ -666,18 +537,19 @@
       "type": "event",
       "name": "UndelegationCancelled",
       "inputs": [
-        {
-          "name": "id",
-          "type": "uint64",
-          "indexed": true,
-          "internalType": "uint64"
-        },
-        {
-          "name": "user",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        }
+        { "name": "staker", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "validator", "type": "address", "indexed": true, "internalType": "address" },
+        { "name": "id", "type": "uint64", "indexed": false, "internalType": "uint64" },
+        { "name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "UndelegationCancelled",
+      "inputs": [
+        { "name": "id", "type": "uint64", "indexed": true, "internalType": "uint64" },
+        { "name": "user", "type": "address", "indexed": true, "internalType": "address" }
       ],
       "anonymous": false
     },
@@ -685,18 +557,8 @@
       "type": "event",
       "name": "UndelegationConfirmed",
       "inputs": [
-        {
-          "name": "id",
-          "type": "uint64",
-          "indexed": true,
-          "internalType": "uint64"
-        },
-        {
-          "name": "user",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        }
+        { "name": "id", "type": "uint64", "indexed": true, "internalType": "uint64" },
+        { "name": "user", "type": "address", "indexed": true, "internalType": "address" }
       ],
       "anonymous": false
     },
@@ -704,21 +566,22 @@
       "type": "event",
       "name": "Upgraded",
       "inputs": [
-        {
-          "name": "implementation",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        }
+        { "name": "implementation", "type": "address", "indexed": true, "internalType": "address" }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ValidatorRatingReset",
+      "inputs": [
+        { "name": "account", "type": "address", "indexed": true, "internalType": "address" }
       ],
       "anonymous": false
     },
     {
       "type": "error",
       "name": "AddressEmptyCode",
-      "inputs": [
-        { "name": "target", "type": "address", "internalType": "address" }
-      ]
+      "inputs": [{ "name": "target", "type": "address", "internalType": "address" }]
     },
     {
       "type": "error",
@@ -753,53 +616,30 @@
     {
       "type": "error",
       "name": "ERC1967InvalidImplementation",
-      "inputs": [
-        {
-          "name": "implementation",
-          "type": "address",
-          "internalType": "address"
-        }
-      ]
+      "inputs": [{ "name": "implementation", "type": "address", "internalType": "address" }]
     },
     { "type": "error", "name": "ERC1967NonPayable", "inputs": [] },
     {
       "type": "error",
       "name": "EpochDurationNotMet",
       "inputs": [
-        {
-          "name": "lastEpochStart",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "currentBlockNumber",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "epochDuration",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
+        { "name": "lastEpochStart", "type": "uint256", "internalType": "uint256" },
+        { "name": "currentBlockNumber", "type": "uint256", "internalType": "uint256" },
+        { "name": "epochDuration", "type": "uint256", "internalType": "uint256" }
       ]
     },
     { "type": "error", "name": "FailedInnerCall", "inputs": [] },
     { "type": "error", "name": "InvalidInitialization", "inputs": [] },
-    { "type": "error", "name": "NoDelegation", "inputs": [] },
     { "type": "error", "name": "NotInitializing", "inputs": [] },
     {
       "type": "error",
       "name": "OwnableInvalidOwner",
-      "inputs": [
-        { "name": "owner", "type": "address", "internalType": "address" }
-      ]
+      "inputs": [{ "name": "owner", "type": "address", "internalType": "address" }]
     },
     {
       "type": "error",
       "name": "OwnableUnauthorizedAccount",
-      "inputs": [
-        { "name": "account", "type": "address", "internalType": "address" }
-      ]
+      "inputs": [{ "name": "account", "type": "address", "internalType": "address" }]
     },
     {
       "type": "error",
@@ -815,9 +655,7 @@
     {
       "type": "error",
       "name": "RewardClaimFailed",
-      "inputs": [
-        { "name": "reason", "type": "string", "internalType": "string" }
-      ]
+      "inputs": [{ "name": "reason", "type": "string", "internalType": "string" }]
     },
     {
       "type": "error",
@@ -830,9 +668,7 @@
     {
       "type": "error",
       "name": "SnapshotNotFound",
-      "inputs": [
-        { "name": "snapshotId", "type": "uint256", "internalType": "uint256" }
-      ]
+      "inputs": [{ "name": "snapshotId", "type": "uint256", "internalType": "uint256" }]
     },
     {
       "type": "error",
@@ -844,7 +680,7 @@
     },
     {
       "type": "error",
-      "name": "StakeValueTooLow",
+      "name": "StakeValueIncorrect",
       "inputs": [
         { "name": "sentAmount", "type": "uint256", "internalType": "uint256" },
         { "name": "targetAmount", "type": "uint256", "internalType": "uint256" }
@@ -863,9 +699,7 @@
     {
       "type": "error",
       "name": "UUPSUnsupportedProxiableUUID",
-      "inputs": [
-        { "name": "slot", "type": "bytes32", "internalType": "bytes32" }
-      ]
+      "inputs": [{ "name": "slot", "type": "bytes32", "internalType": "bytes32" }]
     },
     {
       "type": "error",
@@ -888,11 +722,7 @@
       "type": "error",
       "name": "UndelegationsNotMatching",
       "inputs": [
-        {
-          "name": "undelegations",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
+        { "name": "undelegations", "type": "uint256", "internalType": "uint256" },
         { "name": "amount", "type": "uint256", "internalType": "uint256" }
       ]
     },
