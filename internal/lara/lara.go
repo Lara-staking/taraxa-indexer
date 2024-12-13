@@ -92,12 +92,6 @@ func (l *Lara) Run(interval int) {
 			l.SyncState()
 
 			if int64(currentBlock) > expectedSnapshotTime {
-				// if the epoch is running
-				// end the epoch
-				l.Snapshot()
-				// wait 3 sec
-				time.Sleep(4 * time.Second)
-
 				l.Compound()
 
 				l.SyncState()
@@ -226,6 +220,9 @@ func (l *Lara) DisburseRewardsBetweenHolders(snapshotId *big.Int) {
 
 func (l *Lara) Compound() {
 	laraEthBalance, err := l.Eth.BalanceAt(context.Background(), common.HexToAddress(l.deploymentAddress), nil)
+	if err == nil {
+		laraEthBalance = laraEthBalance.Sub(laraEthBalance, big.NewInt(1e18)) // Subtract one ETH (1 ETH = 10^18 wei)
+	}
 	if err != nil {
 		log.Errorf("Failed to get lara eth balance: %v", err)
 		return
@@ -244,6 +241,7 @@ func (l *Lara) Compound() {
 	if err != nil {
 		log.Error(err)
 	}
+	log.WithFields(log.Fields{"laraEthBalance": laraEthBalance}).Info("LARA: Compounded")
 }
 
 func (l *Lara) SyncState() {
@@ -346,58 +344,17 @@ func (l *Lara) SyncState() {
 	log.WithFields(log.Fields{"currentBlock": currentBlock, "lastRebalance": l.state.lastRebalance, "lastSnapshotBlock": l.state.lastSnapshotBlock, "nextSnapshotBlock": nextSnapshot, "nodesDelegatedTo": len(l.state.validators), "totalDelegated": l.state.lastEpochTotalDelegatedAmount}).Info("LARA STATE: ")
 }
 
-func (l *Lara) Snapshot() {
-	if l.state.isMakingSnapshot {
-		log.Warn("WARN: PENDING SNAPSHOT")
-		return
-	}
-
-	oracleNodeCount, err := l.oracle.NodeCount(nil)
-	if err != nil {
-		log.Fatalf("Failed to get oracle node count: %v", err)
-	}
-	if oracleNodeCount.Cmp(big.NewInt(0)) == 0 {
-		log.Warn("LARA == No oracle nodes")
-		return
-	}
-
-	l.state.isMakingSnapshot = true
-	defer func() {
-		l.state.isMakingSnapshot = false
-	}()
-
-	err = l.retryTransaction(func() (*types.Transaction, error) {
-		opts := &bind.TransactOpts{
-			From:     l.signer.From,
-			Signer:   l.signer.Signer,
-			GasLimit: 0,
-			Context:  context.Background(),
-		}
-		return l.contract.Snapshot(opts)
-	}, "make snapshot")
-
-	if err != nil {
-		if strings.Contains(err.Error(), "EpochDurationNotMet") {
-			log.Warn("Epoch duration not met")
-		} else {
-			log.Warnf("Failed to make snapshot: %v", err)
-		}
-		return
-	}
-	l.SyncState()
-}
-
 func (l *Lara) GetState() State {
 	return l.state
 }
 
 func (l *Lara) Rebalance() {
 	if l.state.isRebalancing {
-		log.Warn("WARN: PENDING REBALANCE")
+		log.Error("WARN: PENDING REBALANCE")
 		return
 	}
 	if l.state.isMakingSnapshot {
-		log.Warn("WARN: SNAPSHOT IN PROGRESS")
+		log.Error("WARN: SNAPSHOT IN PROGRESS")
 		return
 	}
 
@@ -420,10 +377,8 @@ func (l *Lara) Rebalance() {
 		if strings.Contains(err.Error(), "Transaction already in transactions pool") {
 			log.Warn("Rebalance tx already in pool")
 		} else {
-			log.Warnf("Failed to rebalance: %v", err)
+			log.Errorf("Failed to rebalance: %v", err)
 		}
-	} else {
-		log.Warn("Rebalanced")
 	}
 }
 
