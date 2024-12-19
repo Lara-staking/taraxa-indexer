@@ -11,7 +11,7 @@ require (
 	github.com/labstack/echo/v4 v4.13.2
 	github.com/machinebox/graphql v0.2.2
 	github.com/nleeper/goment v1.4.4
-	github.com/oapi-codegen/echo-middleware v1.0.1
+	github.com/oapi-codegen/echo-middleware v1.0.2
 	github.com/oapi-codegen/oapi-codegen/v2 v2.3.0
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/sirupsen/logrus v1.9.3
