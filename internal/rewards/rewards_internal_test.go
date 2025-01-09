@@ -133,7 +133,6 @@ func TestRewards(t *testing.T) {
 
 	st := pebble.NewStorage("")
 	block := chain.Block{Pbft: models.Pbft{Number: 1, Author: validator4_addr}}
-
 	ethc, error := ethclient.Dial("wss://ws.testnet.taraxa.io/")
 	if error != nil {
 		t.Log(error)

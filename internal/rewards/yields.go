@@ -1,7 +1,10 @@
 package rewards
 
 import (
+	"context"
 	"math/big"
+	"sort"
+	"strconv"
 
 	"github.com/Taraxa-project/taraxa-indexer/internal/common"
 	"github.com/Taraxa-project/taraxa-indexer/internal/oracle"
@@ -94,7 +97,30 @@ func (r *Rewards) processValidatorsIntervalYield(batch storage.Batch) {
 		yield := GetYieldForInterval(sum, r.config.Chain.BlocksPerYear, int64(r.config.ValidatorsYieldSavingInterval))
 		log.WithFields(log.Fields{"validator": val, "yield": yield}).Info("processValidatorsIntervalYield")
 		batch.Add(&storage.Yield{Yield: common.FormatFloat(yield)}, val, r.blockNum)
-		yields = append(yields, oracle.RawValidator{Yield: common.FormatFloat(yield), Address: ethcommon.HexToAddress(val)})
+		if yield > 0 {
+			yields = append(yields, oracle.RawValidator{Yield: common.FormatFloat(yield), Address: ethcommon.HexToAddress(val)})
+		}
 	}
-	r.oracle.PushValidators(yields)
+	currentBlock := r.storage.GetFinalizationData().PbftCount
+	chainHead, err := r.oracle.Eth.HeaderByNumber(context.Background(), nil)
+	if err != nil {
+		log.WithError(err).Fatal("Failed to get chain head")
+	}
+	if currentBlock < chainHead.Number.Uint64()-50 {
+		log.WithFields(log.Fields{"currentBlock": currentBlock, "chainHead": chainHead.Number.Uint64()}).Warn("Current block not close to chain head, skipping Oracle push")
+		return
+	}
+	go func() {
+		filteredYields := yields[:30]
+
+		log.WithFields(log.Fields{"filteredYields": len(filteredYields)}).Info("filteredYields has been filtered")
+
+		// sort yields by yield
+		sort.Slice(filteredYields, func(i, j int) bool {
+			yieldI, _ := strconv.ParseFloat(filteredYields[i].Yield, 32)
+			yieldJ, _ := strconv.ParseFloat(filteredYields[j].Yield, 32)
+			return yieldI > yieldJ
+		})
+		r.oracle.PushValidators(filteredYields)
+	}()
 }

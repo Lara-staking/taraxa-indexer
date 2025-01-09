@@ -66,46 +66,42 @@ func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_add
 	l.contract = contract
 	l.graphQLEndpoint = graphQLEndpoint
 	l.SyncState()
+	return l
+}
+
+func (l *Lara) Run(interval int) {
+	if l.Eth == nil {
+		log.Fatalf("Eth client is nil")
+	}
 	done := make(chan bool)
 	go l.FetchAndDistributePastRewards(done)
 	<-done // Wait for FetchAndDistributePastRewards to finish
 
-	l.DistributeRewardsForLastSnapshot()
-	return l
-}
-
-func (l *Lara) Run() {
-	if l.Eth == nil {
-		log.Fatalf("Eth client is nil")
-	}
-	ticker := time.NewTicker(60 * time.Second)
-	for range ticker.C {
-		ctx := context.Background()
-		currentBlock, err := l.Eth.BlockNumber(ctx)
-		if err != nil {
-			log.Fatalf("Lara: Failed to get current block: %v", err)
-		}
-		// if we pass the time to end epoch
-		expenctedSnapshotTime := l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64()
-		expectedRebalanceTime := l.state.lastRebalance.Int64() + l.state.epochDuration.Int64()
-		l.SyncState()
-
-		if int64(currentBlock) > expenctedSnapshotTime {
-			// if the epoch is running
-			// end the epoch
-			l.Snapshot()
-			// wait 3 sec
-			time.Sleep(4 * time.Second)
-
-			l.Compound()
-
+	go l.DistributeRewardsForLastSnapshot()
+	go func() {
+		ticker := time.NewTicker(time.Duration(interval*3) * time.Second)
+		for range ticker.C {
+			ctx := context.Background()
+			currentBlock, err := l.Eth.BlockNumber(ctx)
+			if err != nil {
+				log.Fatalf("Lara: Failed to get current block: %v", err)
+			}
+			// if we pass the time to end epoch
+			expectedSnapshotTime := l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64()
+			expectedRebalanceTime := l.state.lastRebalance.Int64() + l.state.epochDuration.Int64()
 			l.SyncState()
+
+			if int64(currentBlock) > expectedSnapshotTime {
+				l.Compound()
+
+				l.SyncState()
+			}
+			if int64(currentBlock) > expectedRebalanceTime {
+				log.Warnf("Triggering rebalance at block: %d, expected rebalance time: %d", currentBlock, expectedRebalanceTime)
+				l.Rebalance()
+			}
 		}
-		if int64(currentBlock) > expectedRebalanceTime {
-			log.Warnf("Triggering rebalance at block: %d, expected rebalance time: %d", currentBlock, expectedRebalanceTime)
-			l.Rebalance()
-		}
-	}
+	}()
 }
 
 func (l *Lara) retryTransaction(txFunc func() (*types.Transaction, error), description string) error {
@@ -224,6 +220,9 @@ func (l *Lara) DisburseRewardsBetweenHolders(snapshotId *big.Int) {
 
 func (l *Lara) Compound() {
 	laraEthBalance, err := l.Eth.BalanceAt(context.Background(), common.HexToAddress(l.deploymentAddress), nil)
+	if err == nil {
+		laraEthBalance = laraEthBalance.Sub(laraEthBalance, big.NewInt(1e18)) // Subtract one ETH (1 ETH = 10^18 wei)
+	}
 	if err != nil {
 		log.Errorf("Failed to get lara eth balance: %v", err)
 		return
@@ -242,6 +241,7 @@ func (l *Lara) Compound() {
 	if err != nil {
 		log.Error(err)
 	}
+	log.WithFields(log.Fields{"laraEthBalance": laraEthBalance}).Info("LARA: Compounded")
 }
 
 func (l *Lara) SyncState() {
@@ -344,58 +344,17 @@ func (l *Lara) SyncState() {
 	log.WithFields(log.Fields{"currentBlock": currentBlock, "lastRebalance": l.state.lastRebalance, "lastSnapshotBlock": l.state.lastSnapshotBlock, "nextSnapshotBlock": nextSnapshot, "nodesDelegatedTo": len(l.state.validators), "totalDelegated": l.state.lastEpochTotalDelegatedAmount}).Info("LARA STATE: ")
 }
 
-func (l *Lara) Snapshot() {
-	if l.state.isMakingSnapshot {
-		log.Warn("WARN: PENDING SNAPSHOT")
-		return
-	}
-
-	oracleNodeCount, err := l.oracle.NodeCount(nil)
-	if err != nil {
-		log.Fatalf("Failed to get oracle node count: %v", err)
-	}
-	if oracleNodeCount.Cmp(big.NewInt(0)) == 0 {
-		log.Warn("LARA == No oracle nodes")
-		return
-	}
-
-	l.state.isMakingSnapshot = true
-	defer func() {
-		l.state.isMakingSnapshot = false
-	}()
-
-	err = l.retryTransaction(func() (*types.Transaction, error) {
-		opts := &bind.TransactOpts{
-			From:     l.signer.From,
-			Signer:   l.signer.Signer,
-			GasLimit: 0,
-			Context:  context.Background(),
-		}
-		return l.contract.Snapshot(opts)
-	}, "make snapshot")
-
-	if err != nil {
-		if strings.Contains(err.Error(), "EpochDurationNotMet") {
-			log.Warn("Epoch duration not met")
-		} else {
-			log.Warnf("Failed to make snapshot: %v", err)
-		}
-		return
-	}
-	l.SyncState()
-}
-
 func (l *Lara) GetState() State {
 	return l.state
 }
 
 func (l *Lara) Rebalance() {
 	if l.state.isRebalancing {
-		log.Warn("WARN: PENDING REBALANCE")
+		log.Error("WARN: PENDING REBALANCE")
 		return
 	}
 	if l.state.isMakingSnapshot {
-		log.Warn("WARN: SNAPSHOT IN PROGRESS")
+		log.Error("WARN: SNAPSHOT IN PROGRESS")
 		return
 	}
 
@@ -418,10 +377,8 @@ func (l *Lara) Rebalance() {
 		if strings.Contains(err.Error(), "Transaction already in transactions pool") {
 			log.Warn("Rebalance tx already in pool")
 		} else {
-			log.Warnf("Failed to rebalance: %v", err)
+			log.Errorf("Failed to rebalance: %v", err)
 		}
-	} else {
-		log.Warn("Rebalanced")
 	}
 }
 
@@ -440,59 +397,57 @@ func (l *Lara) GetLastSnapshotIDUpdateTime(snapshotID *big.Int) (uint64, error) 
 }
 
 func (l *Lara) DistributeRewardsForLastSnapshot() {
-	go func() {
-		log.Info("Starting periodic fetch and distribution of past rewards")
+	log.Info("Starting periodic fetch and distribution of past rewards")
 
-		ticker := time.NewTicker(time.Duration(4*1000) * time.Second)
-		defer ticker.Stop()
+	ticker := time.NewTicker(time.Duration(4*1000) * time.Second)
+	defer ticker.Stop()
 
-		for range ticker.C {
-			// Get the current block number
-			currentBlock, err := l.Eth.BlockNumber(context.Background())
-			if err != nil {
-				log.Errorf("Failed to get current block number: %v", err)
-				continue
-			}
-
-			// Calculate the start block (lastSnapshotBlock - 1)
-			startBlock := new(big.Int).Sub(l.state.lastSnapshotBlock, big.NewInt(1))
-			if startBlock.Cmp(big.NewInt(0)) < 0 {
-				startBlock = big.NewInt(0)
-			}
-
-			log.Infof("Fetching SnapshotTaken events from block %d to %d", startBlock.Uint64(), currentBlock)
-
-			// Create a filter for SnapshotTaken events
-			filterOpts := &bind.FilterOpts{
-				Start:   startBlock.Uint64(),
-				End:     &currentBlock,
-				Context: context.Background(),
-			}
-
-			// Filter for SnapshotTaken events
-			iter, err := l.contract.FilterSnapshotTaken(filterOpts, nil, nil, nil)
-			if err != nil {
-				log.Errorf("Failed to filter SnapshotTaken events: %v", err)
-				continue
-			}
-
-			for iter.Next() {
-				event := iter.Event
-				log.Infof("Processing SnapshotTaken event: SnapshotID %s", event.SnapshotId)
-
-				// Check and distribute rewards for this snapshot
-				l.distributeRewardsForSnapshot(event.SnapshotId)
-			}
-
-			if err := iter.Error(); err != nil {
-				log.Errorf("Error iterating through SnapshotTaken events: %v", err)
-			}
-
-			iter.Close()
-
-			log.Info("Finished processing SnapshotTaken events for this interval")
+	for range ticker.C {
+		// Get the current block number
+		currentBlock, err := l.Eth.BlockNumber(context.Background())
+		if err != nil {
+			log.Errorf("Failed to get current block number: %v", err)
+			continue
 		}
-	}()
+
+		// Calculate the start block (lastSnapshotBlock - 1)
+		startBlock := new(big.Int).Sub(l.state.lastSnapshotBlock, big.NewInt(1))
+		if startBlock.Cmp(big.NewInt(0)) < 0 {
+			startBlock = big.NewInt(0)
+		}
+
+		log.Infof("Fetching SnapshotTaken events from block %d to %d", startBlock.Uint64(), currentBlock)
+
+		// Create a filter for SnapshotTaken events
+		filterOpts := &bind.FilterOpts{
+			Start:   startBlock.Uint64(),
+			End:     &currentBlock,
+			Context: context.Background(),
+		}
+
+		// Filter for SnapshotTaken events
+		iter, err := l.contract.FilterSnapshotTaken(filterOpts, nil, nil, nil)
+		if err != nil {
+			log.Errorf("Failed to filter SnapshotTaken events: %v", err)
+			continue
+		}
+
+		for iter.Next() {
+			event := iter.Event
+			log.Infof("Processing SnapshotTaken event: SnapshotID %s", event.SnapshotId)
+
+			// Check and distribute rewards for this snapshot
+			l.distributeRewardsForSnapshot(event.SnapshotId)
+		}
+
+		if err := iter.Error(); err != nil {
+			log.Errorf("Error iterating through SnapshotTaken events: %v", err)
+		}
+
+		iter.Close()
+
+		log.Info("Finished processing SnapshotTaken events for this interval")
+	}
 }
 
 func (l *Lara) distributeRewardsUpToSnapshot(latestSnapshotId *big.Int) {

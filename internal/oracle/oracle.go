@@ -26,14 +26,30 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type NodeData = apy_oracle.IApyOracleNodeData
+
+type YieldedValidator struct {
+	Account           common.Address
+	Rank              uint16
+	Rating            uint64
+	Yield             string
+	Commisson         *uint64
+	RegistrationBlock uint64
+	PbftCount         uint64
+}
+
+type RawValidator struct {
+	Address common.Address
+	Yield   string
+}
+
 type Oracle struct {
-	storage         pebble.Storage
-	Eth             *ethclient.Client
-	signer          *bind.TransactOpts
-	oracleAddress   string
-	chainId         int
-	contract        *apy_oracle.ApyOracle
-	validatorsMutex sync.Mutex
+	storage       pebble.Storage
+	Eth           *ethclient.Client
+	signer        *bind.TransactOpts
+	oracleAddress string
+	chainId       int
+	contract      *apy_oracle.ApyOracle
 }
 
 func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chainId int, storage pebble.Storage) *Oracle {
@@ -53,34 +69,49 @@ func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chain
 }
 
 func (o *Oracle) PushValidators(validators []RawValidator) {
-	o.validatorsMutex.Lock()
-	defer o.validatorsMutex.Unlock()
-	yieldedValidators := make([]YieldedValidator, 0)
+	var yieldedValidators []YieldedValidator
+	var wg sync.WaitGroup
+	results := make(chan YieldedValidator)
 	for _, validator := range validators {
-		validatorData, err := FetchValidatorInfo(o.Eth, validator.Address.Hex())
-		if err != nil {
-			if err.Error() == "Validator does not exist" {
-				continue
+		wg.Add(1)
+		go func(validator RawValidator) {
+			defer wg.Done()
+
+			validatorData, err := FetchValidatorInfo(o.Eth, validator.Address.Hex())
+			if err != nil {
+				if err.Error() == "Validator does not exist" {
+					return
+				}
+				log.Fatalf("Failed to fetch validator info: %v", err)
 			}
-			log.Fatalf("Failed to fetch validator info: %v", err)
-		}
-		commission := uint64(validatorData.Commission)
-		addr := o.storage.GetAddressStats(validator.Address.Hex())
-		registrationBlock, err := o.FetchValidatorRegistrationBlock(validator.Address)
+			commission := uint64(validatorData.Commission)
+			addr := o.storage.GetAddressStats(validator.Address.Hex())
+			registrationBlock, err := o.FetchValidatorRegistrationBlock(validator.Address)
 
-		if err != nil {
-			log.Fatalf("Failed to fetch validator registration block: %v", err)
-		}
+			if err != nil {
+				log.Fatalf("Failed to fetch validator registration block: %v", err)
+			}
 
-		yieldedValidator := YieldedValidator{
-			Account:           validator.Address,
-			Yield:             validator.Yield,
-			Commisson:         &commission,
-			Rank:              0,
-			RegistrationBlock: registrationBlock,
-			PbftCount:         addr.PbftCount,
-			Rating:            0,
-		}
+			yieldedValidator := YieldedValidator{
+				Account:           validator.Address,
+				Yield:             validator.Yield,
+				Commisson:         &commission,
+				Rank:              0,
+				RegistrationBlock: registrationBlock,
+				PbftCount:         addr.PbftCount,
+				Rating:            0,
+			}
+			log.Infof("Validator info fetched for %s", validator.Address.Hex())
+			results <- yieldedValidator
+		}(validator)
+	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results from the channel
+	for yieldedValidator := range results {
 		yieldedValidators = append(yieldedValidators, yieldedValidator)
 	}
 
@@ -93,6 +124,8 @@ func (o *Oracle) pushDataToContract(yieldedValidators []YieldedValidator) {
 		log.Warn("No validator data to push")
 		return
 	}
+
+	log.Infof("Pushing %d validators to contract", len(yieldedValidators))
 
 	validatorDatas := make([]NodeData, 0)
 	currentBlock, err := o.Eth.BlockNumber(context.Background())
@@ -238,8 +271,6 @@ func (o *Oracle) FetchValidatorRegistrationBlock(validatorAddress common.Address
 	}
 	return 0, nil
 }
-
-// go run main.go --blockchain_ws=ws://localhost:8777 --log_level=debug --chain_id=842 --signing_key=472a3f59fe3d81cda76dbb2a64825e46c4b067ae559cd4dfc784869da80bd05e --oracle_address=0x4076f9669fd33e55545823c4cB9f1abA7cfa480B
 
 func MakeMockOracle(eth *ethclient.Client) *Oracle {
 	return &Oracle{
