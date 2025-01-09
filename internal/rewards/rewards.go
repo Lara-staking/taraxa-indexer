@@ -26,7 +26,6 @@ func MakeRewards(oracle *oracle.Oracle, storage storage.Storage, batch storage.B
 	r := Rewards{oracle, storage, batch, config, MakeValidators(config, block.Validators), block.TotalAmountDelegated, block.TotalSupply, block.Pbft.Number}
 	// special case for  the networks without aspen hf part1 (incorrect initialization of the supply without aspen hf part1)
 	if r.totalSupply.Sign() == 0 {
-	if r.totalSupply.Sign() == 0 {
 		r.totalSupply = r.storage.GetTotalSupply()
 	}
 	return &r
