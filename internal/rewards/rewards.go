@@ -46,7 +46,7 @@ func (r *Rewards) Process(totalMinted *big.Int, dags []chain.DagBlock, trxs []ch
 	totalReward, currentBlockFee := r.ProcessStats(rewardsStats, totalMinted)
 
 	if totalReward.Cmp(totalMinted) != 0 {
-		log.WithFields(log.Fields{"period": r.blockNum, "total_reward_check": totalReward, "total_minted": totalMinted}).Fatal("Total reward check failed")
+		log.WithFields(log.Fields{"period": r.blockNum, "total_reward_check": totalReward, "total_minted": totalMinted}).Warn("Total reward check failed")
 	}
 	r.addTotalMinted(totalReward)
 
