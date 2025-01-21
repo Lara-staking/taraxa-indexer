@@ -53,10 +53,10 @@ func init() {
 	yield_saving_interval = flag.Int("yield_saving_interval", 1000, "interval for saving total yield")
 	validators_yield_saving_interval = flag.Int("validators_yield_saving_interval", 1000, "interval for saving validators yield")
 	sync_queue_limit = flag.Int("sync_queue_limit", 10, "limit of blocks in the sync queue")
-	oracle_address = flag.String("oracle_address", "0x83BA75e668B479376973F4C7B0D240E4b5B25237", "oracles address")
-	lara_address = flag.String("lara_address", "0xa0ACAa383Aa22Eb0C93b115344C05409BBBE68d6", "lara address")
+	oracle_address = flag.String("oracle_address", "0x8299040F890AD1c13Edd4D1381AB862Cc8b4a464", "oracles address")
+	lara_address = flag.String("lara_address", "0x45225cd7B294E17d88eb0E62c935Af525d67798F", "lara address")
 	signing_key = flag.String("signing_key", "", "signing key")
-	graphQLEndpoint = flag.String("graphQLEndpoint", "https://indexer.testnet.taraxa.io/subgraphs/name/Liquid-staking/lara-subgraph", "graphql endpoint")
+	graphQLEndpoint = flag.String("graphQLEndpoint", "https://indexer.mainnet.taraxa.io/subgraphs/name/Liquid-staking/lara-subgraph", "graphql endpoint")
 	flag.Parse()
 
 	logging.Config(filepath.Join(*data_dir, "logs"), *log_level)
@@ -89,30 +89,6 @@ func main() {
 	st := pebble.NewStorage(filepath.Join(*data_dir, "db"))
 	setupCloseHandler(func() { st.Close() })
 	fin := st.GetFinalizationData()
-	// fromKey := storage.FormatIntToKey(fin.PbftCount - uint64(distributionFrequency))
-	// stats_map := make(map[uint64]*storage.RewardsStats)
-	// st.ForEachFromKey([]byte(pebble.GetPrefix(storage.RewardsStats{})), []byte{}, func(key, res []byte) (stop bool) {
-	// 	rs := new(storage.RewardsStats)
-	// 	err := rlp.DecodeBytes(res, rs)
-	// 	if err != nil {
-	// 		log.WithError(err).Fatal("Error decoding data from db")
-	// 	}
-	// 	stats_map[common.ParseUInt(strings.TrimLeft(string(key)[3:], "0"))] = rs
-	// 	// pr := r.rewardsFromStats(totalStake, rs)
-	// 	// for validator, reward := range pr.ValidatorRewards {
-	// 	// 	if intervalRewards.ValidatorRewards[validator] == nil {
-	// 	// 		intervalRewards.ValidatorRewards[validator] = big.NewInt(0)
-	// 	// 	}
-	// 	// 	intervalRewards.ValidatorRewards[validator].Add(intervalRewards.ValidatorRewards[validator], reward)
-	// 	// }
-	// 	// intervalRewards.TotalReward.Add(intervalRewards.TotalReward, pr.TotalReward)
-	// 	// intervalRewards.BlockFee.Add(intervalRewards.BlockFee, pr.BlockFee)
-	// 	// r.batch.Remove(key)
-	// 	return false
-	// })
-	// smj, _ := json.Marshal(stats_map)
-	// fmt.Println(string(smj))
-	// return
 	swagger, err := api.GetSwagger()
 	if err != nil {
 		log.WithError(err).Fatal("Error loading swagger spec")
