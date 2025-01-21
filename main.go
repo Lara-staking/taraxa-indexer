@@ -46,8 +46,8 @@ var (
 func init() {
 	http_port = flag.Int("http_port", 8080, "port to listen")
 	metrics_port = flag.Int("metrics_port", 2112, "metrics http port")
-	blockchain_ws = flag.String("blockchain_ws", "wss://ws.testnet.taraxa.io/", "ws url to connect to blockchain")
-	chain_id = flag.Int("chain_id", 842, "chain id")
+	blockchain_ws = flag.String("blockchain_ws", "wss://ws.mainnet.taraxa.io/", "ws url to connect to blockchain")
+	chain_id = flag.Int("chain_id", 841, "chain id")
 	data_dir = flag.String("data_dir", "./data", "path to directory where indexer database will be saved")
 	log_level = flag.String("log_level", "info", "minimum log level. could be only [trace, debug, info, warn, error, fatal]")
 	yield_saving_interval = flag.Int("yield_saving_interval", 1000, "interval for saving total yield")
