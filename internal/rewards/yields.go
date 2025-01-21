@@ -111,16 +111,12 @@ func (r *Rewards) processValidatorsIntervalYield(batch storage.Batch) {
 		return
 	}
 	go func() {
-		filteredYields := yields[:30]
-
-		log.WithFields(log.Fields{"filteredYields": len(filteredYields)}).Info("filteredYields has been filtered")
-
 		// sort yields by yield
-		sort.Slice(filteredYields, func(i, j int) bool {
-			yieldI, _ := strconv.ParseFloat(filteredYields[i].Yield, 32)
-			yieldJ, _ := strconv.ParseFloat(filteredYields[j].Yield, 32)
+		sort.Slice(yields, func(i, j int) bool {
+			yieldI, _ := strconv.ParseFloat(yields[i].Yield, 32)
+			yieldJ, _ := strconv.ParseFloat(yields[j].Yield, 32)
 			return yieldI > yieldJ
 		})
-		r.oracle.PushValidators(filteredYields)
+		r.oracle.PushValidators(yields)
 	}()
 }
