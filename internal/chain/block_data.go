@@ -56,11 +56,11 @@ func GetBlockData(c Client, period uint64) (bd *BlockData, err error) {
 
 	tp.Wait()
 
-	if bd.Pbft == nil {
-		return nil, ErrFutureBlock
-	}
 	if err != nil {
 		return nil, err
+	}
+	if bd.Pbft == nil {
+		return nil, ErrFutureBlock
 	}
 	return
 }
