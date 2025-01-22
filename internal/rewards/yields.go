@@ -106,7 +106,7 @@ func (r *Rewards) processValidatorsIntervalYield(batch storage.Batch) {
 	if err != nil {
 		log.WithError(err).Fatal("Failed to get chain head")
 	}
-	if currentBlock < chainHead.Number.Uint64()-50 {
+	if currentBlock < chainHead.Number.Uint64()-500 {
 		log.WithFields(log.Fields{"currentBlock": currentBlock, "chainHead": chainHead.Number.Uint64()}).Warn("Current block not close to chain head, skipping Oracle push")
 		return
 	}
