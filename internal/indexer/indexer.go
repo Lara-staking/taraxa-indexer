@@ -12,7 +12,6 @@ import (
 
 type Indexer struct {
 	Client                      chain.Client
-	IndexerFullySynced          chan bool
 	oracle                      *oracle.Oracle
 	storage                     storage.Storage
 	config                      *common.Config
@@ -33,12 +32,11 @@ func (i *Indexer) Run(url string, s storage.Storage, c *common.Config, o *oracle
 	}
 }
 
-func NewIndexer(url string, s storage.Storage, c *common.Config, indexerFullySynced chan bool) (i *Indexer) {
+func NewIndexer(url string, s storage.Storage, c *common.Config) (i *Indexer) {
 	i = new(Indexer)
 	i.retry_time = 5 * time.Second
 	i.storage = s
 	i.config = c
-	i.IndexerFullySynced = indexerFullySynced
 	// connect is retrying to connect every retry_time
 	i.connect(url)
 	log.Info("Indexer Instance initialized")
@@ -164,8 +162,6 @@ func (i *Indexer) run() error {
 	if err != nil {
 		return err
 	}
-	log.Info("Starting Lara instance")
-	i.IndexerFullySynced <- true
 
 	for {
 		select {

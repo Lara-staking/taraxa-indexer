@@ -69,7 +69,7 @@ func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_add
 	return l
 }
 
-func (l *Lara) Run(interval int) {
+func (l *Lara) Run(interval int, generalBlockTime int) {
 	if l.Eth == nil {
 		log.Fatalf("Eth client is nil")
 	}
@@ -77,31 +77,30 @@ func (l *Lara) Run(interval int) {
 	go l.FetchAndDistributePastRewards(done)
 	<-done // Wait for FetchAndDistributePastRewards to finish
 
-	go l.DistributeRewardsForLastSnapshot()
-	go func() {
-		ticker := time.NewTicker(time.Duration(interval*3) * time.Second)
-		for range ticker.C {
-			ctx := context.Background()
-			currentBlock, err := l.Eth.BlockNumber(ctx)
-			if err != nil {
-				log.Fatalf("Lara: Failed to get current block: %v", err)
-			}
-			// if we pass the time to end epoch
-			expectedSnapshotTime := l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64()
-			expectedRebalanceTime := l.state.lastRebalance.Int64() + l.state.epochDuration.Int64()
-			l.SyncState()
-
-			if int64(currentBlock) > expectedSnapshotTime {
-				l.Compound()
-
-				l.SyncState()
-			}
-			if int64(currentBlock) > expectedRebalanceTime {
-				log.Warnf("Triggering rebalance at block: %d, expected rebalance time: %d", currentBlock, expectedRebalanceTime)
-				l.Rebalance()
-			}
+	go l.DistributeRewardsForLastSnapshot(generalBlockTime)
+	ticker := time.NewTicker(time.Duration(interval*generalBlockTime) * time.Millisecond)
+	for range ticker.C {
+		ctx := context.Background()
+		currentBlock, err := l.Eth.BlockNumber(ctx)
+		if err != nil {
+			log.Fatalf("Lara: Failed to get current block: %v", err)
 		}
-	}()
+		log.Infof("Lara lifecycle management started at: %d", currentBlock)
+		// if we pass the time to end epoch
+		expectedSnapshotTime := l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64()
+		expectedRebalanceTime := l.state.lastRebalance.Int64() + l.state.epochDuration.Int64()
+		l.SyncState()
+
+		if int64(currentBlock) > expectedSnapshotTime {
+			l.Compound()
+
+			l.SyncState()
+		}
+		if int64(currentBlock) > expectedRebalanceTime {
+			log.Warnf("Triggering rebalance at block: %d, expected rebalance time: %d", currentBlock, expectedRebalanceTime)
+			l.Rebalance()
+		}
+	}
 }
 
 func (l *Lara) retryTransaction(txFunc func() (*types.Transaction, error), description string) error {
@@ -396,10 +395,10 @@ func (l *Lara) GetLastSnapshotIDUpdateTime(snapshotID *big.Int) (uint64, error) 
 	return 0, fmt.Errorf("no SnapshotTaken event found for snapshotID %s", snapshotID.String())
 }
 
-func (l *Lara) DistributeRewardsForLastSnapshot() {
+func (l *Lara) DistributeRewardsForLastSnapshot(generalBlockTime int) {
 	log.Info("Starting periodic fetch and distribution of past rewards")
 
-	ticker := time.NewTicker(time.Duration(4*1000) * time.Second)
+	ticker := time.NewTicker(time.Duration(generalBlockTime*1_000_000) * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
