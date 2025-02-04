@@ -17,13 +17,16 @@ type Indexer struct {
 	config                      *common.Config
 	retry_time                  time.Duration
 	consistency_check_available bool
+	stats                       *chain.Stats
 }
 
-func (i *Indexer) Run(url string, s storage.Storage, c *common.Config, o *oracle.Oracle) {
+func MakeAndRun(url string, s storage.Storage, c *common.Config, o *oracle.Oracle, stats *chain.Stats) {
+
 	if o == nil {
 		log.Fatal("Oracle is nil")
 	}
-	i.oracle = o
+	i := NewIndexer(url, s, c, o, stats)
+
 	for {
 		err := i.run()
 		f := i.storage.GetFinalizationData()
@@ -32,11 +35,14 @@ func (i *Indexer) Run(url string, s storage.Storage, c *common.Config, o *oracle
 	}
 }
 
-func NewIndexer(url string, s storage.Storage, c *common.Config) (i *Indexer) {
+func NewIndexer(url string, s storage.Storage, c *common.Config, o *oracle.Oracle, stats *chain.Stats) (i *Indexer) {
 	i = new(Indexer)
 	i.retry_time = 5 * time.Second
 	i.storage = s
 	i.config = c
+	i.oracle = o
+	i.stats = stats
+
 	// connect is retrying to connect every retry_time
 	i.connect(url)
 	log.Info("Indexer Instance initialized")
@@ -132,7 +138,7 @@ func (i *Indexer) sync(start, end uint64) error {
 			continue
 		}
 		bc := MakeBlockContext(i.storage, i.Client, i.oracle, i.config)
-		dc, tc, err := bc.process(bd)
+		dc, tc, err := bc.process(bd, i.stats)
 		if err != nil {
 			return err
 		}
@@ -199,7 +205,7 @@ func (i *Indexer) run() error {
 			}
 
 			bc := MakeBlockContext(i.storage, i.Client, i.oracle, i.config)
-			dc, tc, err := bc.process(bd)
+			dc, tc, err := bc.process(bd, i.stats)
 			if err != nil {
 				return err
 			}

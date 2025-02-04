@@ -39,6 +39,9 @@ type ServerInterface interface {
 	// Returns yield for the address
 	// (GET /address/{address}/yieldForInterval)
 	GetAddressYieldForInterval(ctx echo.Context, address AddressParam, params GetAddressYieldForIntervalParams) error
+	// Returns chain stats
+	// (GET /chainStats)
+	GetChainStats(ctx echo.Context) error
 	// Returns the list of TARA token holders and their balances
 	// (GET /holders)
 	GetHolders(ctx echo.Context, params GetHoldersParams) error
@@ -218,6 +221,15 @@ func (w *ServerInterfaceWrapper) GetAddressYieldForInterval(ctx echo.Context) er
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetAddressYieldForInterval(ctx, address, params)
+	return err
+}
+
+// GetChainStats converts echo context to params.
+func (w *ServerInterfaceWrapper) GetChainStats(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetChainStats(ctx)
 	return err
 }
 
@@ -416,6 +428,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/address/:address/transactions", wrapper.GetAddressTransactions)
 	router.GET(baseURL+"/address/:address/yield", wrapper.GetAddressYield)
 	router.GET(baseURL+"/address/:address/yieldForInterval", wrapper.GetAddressYieldForInterval)
+	router.GET(baseURL+"/chainStats", wrapper.GetChainStats)
 	router.GET(baseURL+"/holders", wrapper.GetHolders)
 	router.GET(baseURL+"/totalSupply", wrapper.GetTotalSupply)
 	router.GET(baseURL+"/totalYield", wrapper.GetTotalYield)

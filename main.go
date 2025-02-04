@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"github.com/Taraxa-project/taraxa-indexer/api"
+	"github.com/Taraxa-project/taraxa-indexer/internal/chain"
 	"github.com/Taraxa-project/taraxa-indexer/internal/common"
 	"github.com/Taraxa-project/taraxa-indexer/internal/indexer"
 	"github.com/Taraxa-project/taraxa-indexer/internal/lara"
@@ -45,6 +46,7 @@ var (
 	lara_enabled                     *bool
 	general_block_time               *int
 	last_snapshot_id                 *uint64
+	chain_stats_interval             *int
 )
 
 func init() {
@@ -64,6 +66,8 @@ func init() {
 	lara_enabled = flag.Bool("lara_enabled", false, "enable lara")
 	general_block_time = flag.Int("general_block_time", 3600, "general block time in milliseconds")
 	last_snapshot_id = flag.Uint64("last_snapshot_id", 335, "last snapshot id")
+	chain_stats_interval = flag.Int("chain_stats_interval", 100, "interval for saving chain stats")
+
 	flag.Parse()
 
 	logging.Config(filepath.Join(*data_dir, "logs"), *log_level)
@@ -149,17 +153,16 @@ func main() {
 		c.TotalYieldSavingInterval = uint64(*yield_saving_interval)
 		c.ValidatorsYieldSavingInterval = uint64(*validators_yield_saving_interval)
 		c.SyncQueueLimit = uint64(*sync_queue_limit)
+		c.ChainStatsInterval = *chain_stats_interval
 
 		log.WithFields(log.Fields{"pbft_count": fin.PbftCount, "dag_count": fin.DagCount, "trx_count": fin.TrxCount}).Info("Loaded db with")
-
-		apiHandler := api.NewApiHandler(st, c)
+		chainStats := chain.MakeStats(c.ChainStatsInterval)
+		apiHandler := api.NewApiHandler(st, c, chainStats)
 		api.RegisterHandlers(e, apiHandler)
 
-		indexer := indexer.NewIndexer(*blockchain_ws, st, c)
-		log.Info("Indexer initialized")
 		o := oracle.MakeOracle(rpc, *signing_key, *oracle_address, *chain_id, *graphQLEndpoint, *st)
 
-		go indexer.Run(*blockchain_ws, st, c, o)
+		go indexer.MakeAndRun(*blockchain_ws, st, c, o, chainStats)
 
 		// start a http server for prometheus on a separate go routine
 		go metrics.RunPrometheusServer(":" + strconv.FormatInt(int64(*metrics_port), 10))
