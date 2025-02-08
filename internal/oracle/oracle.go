@@ -1,9 +1,13 @@
 package oracle
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"math/big"
+	"net/http"
 	"reflect"
 	"sort"
 	"strings"
@@ -12,7 +16,6 @@ import (
 
 	// Import other necessary packages
 	"github.com/Taraxa-project/taraxa-go-client/taraxa_client/dpos_contract_client/dpos_interface"
-	dpos_contract "github.com/Taraxa-project/taraxa-indexer/abi/dpos"
 	apy_oracle "github.com/Taraxa-project/taraxa-indexer/abi/oracle"
 	"github.com/Taraxa-project/taraxa-indexer/internal/chain"
 	"github.com/Taraxa-project/taraxa-indexer/internal/contracts"
@@ -44,21 +47,23 @@ type RawValidator struct {
 }
 
 type Oracle struct {
-	storage       pebble.Storage
-	Eth           *ethclient.Client
-	signer        *bind.TransactOpts
-	oracleAddress string
-	chainId       int
-	contract      *apy_oracle.ApyOracle
+	storage         pebble.Storage
+	Eth             *ethclient.Client
+	signer          *bind.TransactOpts
+	oracleAddress   string
+	chainId         int
+	contract        *apy_oracle.ApyOracle
+	graphQLEndpoint string
 }
 
-func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chainId int, storage pebble.Storage) *Oracle {
+func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chainId int, graphQLEndpoint string, storage pebble.Storage) *Oracle {
 	o := new(Oracle)
 	o.storage = storage
 	o.Eth = rpc
 	o.signer = transact.MakeSigner(signing_key, chainId)
 	o.oracleAddress = oracle_address
 	o.chainId = chainId
+	o.graphQLEndpoint = graphQLEndpoint
 	contract, err := apy_oracle.NewApyOracle(common.HexToAddress(o.oracleAddress), o.Eth)
 	if err != nil {
 		log.Fatalf("Failed to create contract: %v", err)
@@ -69,6 +74,7 @@ func MakeOracle(rpc *ethclient.Client, signing_key, oracle_address string, chain
 }
 
 func (o *Oracle) PushValidators(validators []RawValidator) {
+	log.Infof("Pushing %d validators to contract", len(validators))
 	var yieldedValidators []YieldedValidator
 	var wg sync.WaitGroup
 	results := make(chan YieldedValidator)
@@ -249,27 +255,80 @@ func FetchValidatorInfo(client chain.EthereumClient, validatorAddress string) (*
 	return &validatorInfo, nil
 }
 
+// func (o *Oracle) FetchValidatorRegistrationBlock(validatorAddress common.Address) (uint64, error) {
+
+// 	contractAddress := common.HexToAddress("0x00000000000000000000000000000000000000fe")
+// 	instance, err := dpos_contract.NewDposContract(contractAddress, o.Eth)
+// 	if err != nil {
+// 		log.Fatalf("Failed to instantiate contract: %v", err)
+// 	}
+
+// 	opts := &bind.FilterOpts{
+// 		Start:   0,
+// 		End:     nil, // nil means up to latest block
+// 		Context: nil, // nil means no timeout
+// 	}
+// 	iter, err := instance.FilterValidatorRegistered(opts, []common.Address{validatorAddress})
+// 	if err != nil {
+// 		log.Fatalf("Failed to execute a filter query command: %v", err)
+// 	}
+// 	for iter.Next() {
+// 		return iter.Event.Raw.BlockNumber, nil
+// 	}
+// 	return 0, nil
+// }
+
 func (o *Oracle) FetchValidatorRegistrationBlock(validatorAddress common.Address) (uint64, error) {
+	// Define the GraphQL query
+	query := `
+		query validator($address: String!) {
+			validator(id: $address) {
+				registrationBlock
+			}
+		}
+	`
 
-	contractAddress := common.HexToAddress("0x00000000000000000000000000000000000000fe")
-	instance, err := dpos_contract.NewDposContract(contractAddress, o.Eth)
-	if err != nil {
-		log.Fatalf("Failed to instantiate contract: %v", err)
+	// Create a map for the variables
+	variables := map[string]string{
+		"address": validatorAddress.Hex(),
 	}
 
-	opts := &bind.FilterOpts{
-		Start:   0,
-		End:     nil, // nil means up to latest block
-		Context: nil, // nil means no timeout
-	}
-	iter, err := instance.FilterValidatorRegistered(opts, []common.Address{validatorAddress})
+	// Create the request body
+	requestBody, err := json.Marshal(map[string]interface{}{
+		"query":     query,
+		"variables": variables,
+	})
 	if err != nil {
-		log.Fatalf("Failed to execute a filter query command: %v", err)
+		return 0, err
 	}
-	for iter.Next() {
-		return iter.Event.Raw.BlockNumber, nil
+
+	// Make the HTTP POST request
+	resp, err := http.Post(o.graphQLEndpoint, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return 0, err
 	}
-	return 0, nil
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	// Parse the response
+	var response struct {
+		Data struct {
+			Validator struct {
+				RegistrationBlock uint64 `json:"registrationBlock"`
+			} `json:"validator"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return 0, err
+	}
+
+	// Return the registration block
+	return response.Data.Validator.RegistrationBlock, nil
 }
 
 func MakeMockOracle(eth *ethclient.Client) *Oracle {

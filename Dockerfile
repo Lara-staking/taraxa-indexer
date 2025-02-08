@@ -1,5 +1,5 @@
 # builder image
-FROM golang:1.23.4-alpine AS gobuilder
+FROM golang:1.23.5-alpine AS gobuilder
 
 RUN apk update && apk add curl protobuf make \
     rm -rf /var/cache/apk/*

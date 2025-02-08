@@ -53,13 +53,13 @@ func init() {
 	chain_id = flag.Int("chain_id", 841, "chain id")
 	data_dir = flag.String("data_dir", "./data", "path to directory where indexer database will be saved")
 	log_level = flag.String("log_level", "info", "minimum log level. could be only [trace, debug, info, warn, error, fatal]")
-	yield_saving_interval = flag.Int("yield_saving_interval", 1000, "interval for saving total yield")
-	validators_yield_saving_interval = flag.Int("validators_yield_saving_interval", 1000, "interval for saving validators yield")
+	yield_saving_interval = flag.Int("yield_saving_interval", 100, "interval for saving total yield")
+	validators_yield_saving_interval = flag.Int("validators_yield_saving_interval", 100, "interval for saving validators yield")
 	sync_queue_limit = flag.Int("sync_queue_limit", 10, "limit of blocks in the sync queue")
 	oracle_address = flag.String("oracle_address", "0x8299040F890AD1c13Edd4D1381AB862Cc8b4a464", "oracles address")
 	lara_address = flag.String("lara_address", "0x45225cd7B294E17d88eb0E62c935Af525d67798F", "lara address")
 	signing_key = flag.String("signing_key", "", "signing key")
-	graphQLEndpoint = flag.String("graphQLEndpoint", "https://indexer.mainnet.taraxa.io/subgraphs/name/Liquid-staking/lara-subgraph", "graphql endpoint")
+	graphQLEndpoint = flag.String("graphQLEndpoint", "https://indexer.community.taraxa.io/subgraphs/name/Liquid-staking/lara-subgraph", "graphql endpoint")
 	lara_enabled = flag.Bool("lara_enabled", false, "enable lara")
 	general_block_time = flag.Int("general_block_time", 3600, "general block time in milliseconds")
 	flag.Parse()
@@ -154,7 +154,7 @@ func main() {
 
 		indexer := indexer.NewIndexer(*blockchain_ws, st, c)
 		log.Info("Indexer initialized")
-		o := oracle.MakeOracle(rpc, *signing_key, *oracle_address, *chain_id, *st)
+		o := oracle.MakeOracle(rpc, *signing_key, *oracle_address, *chain_id, *graphQLEndpoint, *st)
 
 		go indexer.Run(*blockchain_ws, st, c, o)
 
