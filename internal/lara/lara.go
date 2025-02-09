@@ -51,6 +51,7 @@ func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_add
 	l.signer = transact.MakeSigner(signing_key, chainID)
 	l.deploymentAddress = deployment_address
 	l.chainID = &chainID
+	l.graphQLEndpoint = graphQLEndpoint
 	contract, err := lara_contract.NewLaraContract(common.HexToAddress(l.deploymentAddress), l.Eth)
 	if err != nil {
 		log.Fatalf("Failed to create contract: %v", err)
@@ -209,7 +210,7 @@ func (l *Lara) DisburseRewardsBetweenHolders(snapshotId *big.Int) {
 		log.Fatalf("Failed to get block number: %v", err)
 	}
 	log.WithFields(log.Fields{"blockNumber": blockNumber, "snapshotID": snapshotId}).Info("LARA: Getting staked tara holders")
-	holders := GetStakedTaraHolders(l, blockNumber)
+	holders := GetStakedTaraHolders(l.graphQLEndpoint, blockNumber)
 
 	log.WithFields(log.Fields{"# of holders": len(holders), "snapshotID": snapshotId}).Info("LARA: Disbursing rewards to holders for snapshot")
 
@@ -558,7 +559,7 @@ func (l *Lara) distributeRewardsForSnapshot(snapshotId *big.Int) {
 		return
 	}
 
-	holders := GetStakedTaraHolders(l, blockNumber)
+	holders := GetStakedTaraHolders(l.graphQLEndpoint, blockNumber)
 	rewardsDistributed := false
 
 	for _, holder := range holders {

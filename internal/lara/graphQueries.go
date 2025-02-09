@@ -3,7 +3,8 @@ package lara
 import (
 	"context"
 	"fmt"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/machinebox/graphql"
 )
@@ -16,11 +17,11 @@ type Staker struct {
 	ID string `json:"id"`
 }
 
-func GetStakedTaraHolders(lara *Lara, blockNumber uint64) []string {
-	if lara.graphQLEndpoint == "" {
+func GetStakedTaraHolders(endpoint string, blockNumber uint64) []string {
+	if endpoint == "" {
 		log.Fatal("GraphQL endpoint is not set")
 	}
-	client := graphql.NewClient(lara.graphQLEndpoint)
+	client := graphql.NewClient(endpoint)
 
 	req := graphql.NewRequest(`
 		query($blockNumber: Int!) {
