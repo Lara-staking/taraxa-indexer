@@ -79,44 +79,26 @@ func (l *Lara) Run(interval int, generalBlockTime int) {
 
 	go l.DistributeRewardsForLastSnapshot(generalBlockTime)
 
-	logTicker := time.NewTicker(1 * time.Minute) // Log every minute
-	ticker := time.NewTicker(time.Duration(interval*generalBlockTime) * time.Millisecond)
-	for {
-		select {
-		case <-ticker.C:
-			ctx := context.Background()
-			currentBlock, err := l.Eth.BlockNumber(ctx)
-			if err != nil {
-				log.Fatalf("Lara: Failed to get current block: %v", err)
-			}
-			log.Infof("Lara lifecycle management started at: %d", currentBlock)
-			// if we pass the time to end epoch
-			expectedSnapshotTime := l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64()
-			expectedRebalanceTime := l.state.lastRebalance.Int64() + l.state.epochDuration.Int64()
+	ticker := time.NewTicker(1 * time.Minute)
+	for range ticker.C {
+		ctx := context.Background()
+		currentBlock, err := l.Eth.BlockNumber(ctx)
+		if err != nil {
+			log.Fatalf("Lara: Failed to get current block: %v", err)
+		}
+		// if we pass the time to end epoch
+		expectedSnapshotTime := l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64()
+		expectedRebalanceTime := l.state.lastRebalance.Int64() + l.state.epochDuration.Int64()
+		l.SyncState()
+
+		if int64(currentBlock) > expectedSnapshotTime {
+			l.Compound()
+
 			l.SyncState()
-
-			if int64(currentBlock) > expectedSnapshotTime {
-				l.Compound()
-
-				l.SyncState()
-			}
-			if int64(currentBlock) > expectedRebalanceTime {
-				log.Warnf("Triggering rebalance at block: %d, expected rebalance time: %d", currentBlock, expectedRebalanceTime)
-				l.Rebalance()
-			}
-		case <-logTicker.C:
-			// Calculate time until next expected events
-			ctx := context.Background()
-			currentBlock, err := l.Eth.BlockNumber(ctx)
-			if err != nil {
-				log.Errorf("Lara: Failed to get current block for logging: %v", err)
-				continue
-			}
-
-			secondsUntilSnapshot := (l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64() - int64(currentBlock)) * int64(generalBlockTime) / 1000
-			secondsUntilRebalance := (l.state.lastRebalance.Int64() + l.state.epochDuration.Int64() - int64(currentBlock)) * int64(generalBlockTime) / 1000
-
-			log.Infof("Lara lifecycle management is running. Next snapshot in %d seconds, next rebalance in %d seconds", secondsUntilSnapshot, secondsUntilRebalance)
+		}
+		if int64(currentBlock) > expectedRebalanceTime {
+			log.Warnf("Triggering rebalance at block: %d, expected rebalance time: %d", currentBlock, expectedRebalanceTime)
+			l.Rebalance()
 		}
 	}
 }
@@ -415,6 +397,7 @@ func (l *Lara) GetLastSnapshotIDUpdateTime(snapshotID *big.Int) (uint64, error) 
 	defer iter.Close()
 
 	if iter.Next() {
+		log.Infof("SnapshotTaken event found for snapshotID %s at block %d", snapshotID.String(), iter.Event.Raw.BlockNumber)
 		return iter.Event.Raw.BlockNumber, nil
 	}
 
@@ -422,73 +405,42 @@ func (l *Lara) GetLastSnapshotIDUpdateTime(snapshotID *big.Int) (uint64, error) 
 }
 
 func (l *Lara) DistributeRewardsForLastSnapshot(generalBlockTime int) {
-	log.Info("Starting periodic fetch and distribution of past rewards")
+	log.Info("Starting subscription to SnapshotTaken events for rewards distribution")
+
 	if l.state.lastSnapshotBlock.Cmp(big.NewInt(0)) == 0 {
 		log.Info("LARA: No snapshot has been made yet, skipping rewards distribution")
 		return
 	}
 
-	intervalsPerDay := (24 * time.Hour) / (time.Duration(generalBlockTime) * time.Millisecond)
-	ticker := time.NewTicker(intervalsPerDay * time.Duration(generalBlockTime) * time.Millisecond) // this should fire only once per day
-	logTicker := time.NewTicker(1 * time.Minute)                                                   // Log every minute
-	defer ticker.Stop()
+	// Create a channel to receive SnapshotTaken events
+	eventChan := make(chan *lara_contract.LaraContractSnapshotTaken)
 
-	lastTickTime := time.Now()
+	// Subscribe to SnapshotTaken events
+	sub, err := l.contract.WatchSnapshotTaken(&bind.WatchOpts{
+		Context: context.Background(),
+	}, eventChan, nil, nil, nil)
+	if err != nil {
+		log.Fatalf("Failed to subscribe to SnapshotTaken events: %v", err)
+	}
+	defer sub.Unsubscribe()
+
+	logTicker := time.NewTicker(1 * time.Minute) // Log every minute
+	defer logTicker.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
-			lastTickTime = time.Now() // Update the last tick time
+		case event := <-eventChan:
+			log.Infof("Received SnapshotTaken event: SnapshotID %s", event.SnapshotId)
 
-			// Get the current block number
-			currentBlock, err := l.Eth.BlockNumber(context.Background())
-			if err != nil {
-				log.Errorf("Failed to get current block number: %v", err)
-				continue
-			}
+			// Check and distribute rewards for this snapshot
+			l.distributeRewardsForSnapshot(event.SnapshotId)
 
-			// Calculate the start block (lastSnapshotBlock - 1)
-			startBlock := new(big.Int).Sub(l.state.lastSnapshotBlock, big.NewInt(1))
-			if startBlock.Cmp(big.NewInt(0)) < 0 {
-				startBlock = big.NewInt(0)
-			}
-
-			log.Infof("Fetching SnapshotTaken events from block %d to %d", startBlock.Uint64(), currentBlock)
-
-			// Create a filter for SnapshotTaken events
-			filterOpts := &bind.FilterOpts{
-				Start:   startBlock.Uint64(),
-				End:     &currentBlock,
-				Context: context.Background(),
-			}
-
-			// Filter for SnapshotTaken events
-			iter, err := l.contract.FilterSnapshotTaken(filterOpts, nil, nil, nil)
-			if err != nil {
-				log.Errorf("Failed to filter SnapshotTaken events: %v", err)
-				continue
-			}
-
-			for iter.Next() {
-				event := iter.Event
-				log.Infof("Processing SnapshotTaken event: SnapshotID %s", event.SnapshotId)
-
-				// Check and distribute rewards for this snapshot
-				l.distributeRewardsForSnapshot(event.SnapshotId)
-			}
-
-			if err := iter.Error(); err != nil {
-				log.Errorf("Error iterating through SnapshotTaken events: %v", err)
-			}
-
-			iter.Close()
-
-			log.Info("Finished processing SnapshotTaken events for this interval")
+		case err := <-sub.Err():
+			log.Errorf("Error in SnapshotTaken subscription: %v", err)
+			return
 
 		case <-logTicker.C:
-			// Calculate time until the next ticker event
-			nextTickDuration := time.Until(lastTickTime.Add(intervalsPerDay * time.Duration(generalBlockTime) * time.Millisecond))
-			log.Infof("Rewards distribution is running. Next distribution in %v seconds", nextTickDuration.Seconds())
+			log.Info("Rewards distribution subscription is active")
 		}
 	}
 }
