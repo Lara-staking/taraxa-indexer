@@ -14,6 +14,8 @@ import (
 	apy_oracle "github.com/Taraxa-project/taraxa-indexer/abi/oracle"
 	"github.com/Taraxa-project/taraxa-indexer/internal/oracle"
 	"github.com/Taraxa-project/taraxa-indexer/internal/transact"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -73,11 +75,20 @@ func (l *Lara) Run(interval int, generalBlockTime int) {
 	if l.Eth == nil {
 		log.Fatalf("Eth client is nil")
 	}
-	done := make(chan bool)
-	go l.FetchAndDistributePastRewards(done)
-	<-done // Wait for FetchAndDistributePastRewards to finish
 
-	go l.DistributeRewardsForLastSnapshot(generalBlockTime)
+	rewardTicker := time.NewTicker(2 * time.Hour)
+	defer rewardTicker.Stop()
+
+	go func() {
+		for range rewardTicker.C {
+			go func() {
+				done := make(chan bool)
+				log.Infof("Fetching and distributing past rewards at %s", time.Now().Format("2006-01-02 15:04:05"))
+				l.FetchAndDistributePastRewards(done)
+				<-done // Wait for FetchAndDistributePastRewards to finish
+			}()
+		}
+	}()
 
 	ticker := time.NewTicker(1 * time.Minute)
 	for range ticker.C {
@@ -122,6 +133,17 @@ func (l *Lara) retryTransaction(txFunc func() (*types.Transaction, error), descr
 			}
 		} else {
 			log.WithFields(log.Fields{"txhash": tx.Hash().Hex()}).Infof("LARA %s: ", strings.ToUpper(description))
+			receipt, err := bind.WaitMined(context.Background(), l.Eth, tx)
+			if err != nil {
+				log.Errorf("Failed to wait for transaction to be mined: %v", err)
+				continue // Retry the transaction
+			}
+
+			// Check if the transaction was successful
+			if receipt.Status == types.ReceiptStatusFailed {
+				log.Errorf("Transaction %s failed", description)
+				continue // Retry the transaction
+			}
 			return nil
 		}
 
@@ -169,15 +191,44 @@ func (l *Lara) GetRewardsPerSnapshot(snapshotId *big.Int) *big.Int {
 }
 
 func (l *Lara) retryDistributeRewards(holderAddress common.Address, snapshotId *big.Int) error {
-	return l.retryTransaction(func() (*types.Transaction, error) {
+
+	const laraABI = `[{"type":"function","name":"distributeRewardsForSnapshot","inputs":[{"name":"staker","type":"address","internalType": "address"},{"name":"snapshotId","type":"uint256","internalType": "uint256"}],"outputs":[],"stateMutability":"nonpayable"}]`
+
+	// Parse the ABI
+	parsedABI, err := abi.JSON(strings.NewReader(laraABI))
+	if err != nil {
+		log.Fatalf("Failed to parse ABI: %v", err)
+	}
+
+	err = l.retryTransaction(func() (*types.Transaction, error) {
+		deployAddress := common.HexToAddress(l.deploymentAddress)
+		data, err := parsedABI.Pack("distributeRewardsForSnapshot", holderAddress, snapshotId)
+		if err != nil {
+			log.Fatalf("Failed to pack data: %v", err)
+		}
+		gasLimit, err := l.Eth.EstimateGas(context.Background(), ethereum.CallMsg{
+			From: l.signer.From,
+			To:   &deployAddress,
+			Data: data,
+		})
+		if err != nil {
+			log.Errorf("Failed to estimate gas: %v", err)
+			return nil, err
+		}
+
+		// Add a buffer to the estimated gas limit
+		gasLimit = gasLimit + (gasLimit / 20) // Add 20% buffer
+
 		opts := &bind.TransactOpts{
 			From:     l.signer.From,
 			Signer:   l.signer.Signer,
-			GasLimit: 0,
+			GasLimit: gasLimit,
 			Context:  context.Background(),
 		}
 		return l.contract.DistributeRewardsForSnapshot(opts, holderAddress, snapshotId)
 	}, fmt.Sprintf("distribute rewards for snapshot %s to holder %s", snapshotId.String(), holderAddress.Hex()))
+
+	return err
 }
 
 func (l *Lara) DisburseRewardsBetweenHolders(snapshotId *big.Int) {
@@ -392,6 +443,7 @@ func (l *Lara) Rebalance() {
 func (l *Lara) GetLastSnapshotIDUpdateTime(snapshotID *big.Int) (uint64, error) {
 	iter, err := l.contract.FilterSnapshotTaken(&bind.FilterOpts{}, []*big.Int{snapshotID}, nil, nil)
 	if err != nil {
+		log.Errorf("Failed to get last snapshot ID update time: %v", err)
 		return 0, err
 	}
 	defer iter.Close()
@@ -402,47 +454,6 @@ func (l *Lara) GetLastSnapshotIDUpdateTime(snapshotID *big.Int) (uint64, error) 
 	}
 
 	return 0, fmt.Errorf("no SnapshotTaken event found for snapshotID %s", snapshotID.String())
-}
-
-func (l *Lara) DistributeRewardsForLastSnapshot(generalBlockTime int) {
-	log.Info("Starting subscription to SnapshotTaken events for rewards distribution")
-
-	if l.state.lastSnapshotBlock.Cmp(big.NewInt(0)) == 0 {
-		log.Info("LARA: No snapshot has been made yet, skipping rewards distribution")
-		return
-	}
-
-	// Create a channel to receive SnapshotTaken events
-	eventChan := make(chan *lara_contract.LaraContractSnapshotTaken)
-
-	// Subscribe to SnapshotTaken events
-	sub, err := l.contract.WatchSnapshotTaken(&bind.WatchOpts{
-		Context: context.Background(),
-	}, eventChan, nil, nil, nil)
-	if err != nil {
-		log.Fatalf("Failed to subscribe to SnapshotTaken events: %v", err)
-	}
-	defer sub.Unsubscribe()
-
-	logTicker := time.NewTicker(1 * time.Minute) // Log every minute
-	defer logTicker.Stop()
-
-	for {
-		select {
-		case event := <-eventChan:
-			log.Infof("Received SnapshotTaken event: SnapshotID %s", event.SnapshotId)
-
-			// Check and distribute rewards for this snapshot
-			l.distributeRewardsForSnapshot(event.SnapshotId)
-
-		case err := <-sub.Err():
-			log.Errorf("Error in SnapshotTaken subscription: %v", err)
-			return
-
-		case <-logTicker.C:
-			log.Info("Rewards distribution subscription is active")
-		}
-	}
 }
 
 func (l *Lara) distributeRewardsUpToSnapshot(latestSnapshotId *big.Int) {
