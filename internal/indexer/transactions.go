@@ -16,7 +16,6 @@ func (bc *blockContext) processTransactions() (err error) {
 		return
 	}
 
-	start := time.Now()
 	if len(bc.Block.Pbft.Transactions) != len(bc.Block.Transactions) {
 		log.WithFields(log.Fields{"in_block": len(bc.Block.Pbft.Transactions), "transactions": len(bc.Block.Transactions), "traces": len(bc.Block.Traces)}).Error("Transactions count mismatch")
 	}
@@ -31,6 +30,11 @@ func (bc *blockContext) processTransactions() (err error) {
 		err = bc.processTransaction(t_idx)
 		if err != nil {
 			return
+		}
+		if len(bc.Block.Traces) > 0 {
+			if internal_transactions := bc.processInternalTransactions(bc.Block.Traces[t_idx], t_idx, bc.Block.Transactions[t_idx].GasPrice); internal_transactions != nil {
+				bc.Batch.AddSingleKey(internal_transactions, bc.Block.Transactions[t_idx].Hash)
+			}
 		}
 	}
 	elapsed_tp := time.Since(start_tp)
