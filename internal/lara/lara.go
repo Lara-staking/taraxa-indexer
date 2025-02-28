@@ -11,6 +11,7 @@ import (
 
 	dpos_contract "github.com/Taraxa-project/taraxa-indexer/abi/dpos"
 	lara_contract "github.com/Taraxa-project/taraxa-indexer/abi/lara"
+	multicall_contract "github.com/Taraxa-project/taraxa-indexer/abi/multicall"
 	apy_oracle "github.com/Taraxa-project/taraxa-indexer/abi/oracle"
 	"github.com/Taraxa-project/taraxa-indexer/internal/oracle"
 	"github.com/Taraxa-project/taraxa-indexer/internal/transact"
@@ -27,7 +28,6 @@ type State struct {
 	epochDuration                 *big.Int
 	lastSnapshotBlock             *big.Int
 	lastSnapshotID                *big.Int
-	lastSnapshotIdDistributed     *big.Int
 	lastRebalance                 *big.Int
 	lastEpochTotalDelegatedAmount *big.Int
 	validatorStakes               map[common.Address]*big.Int
@@ -45,15 +45,18 @@ type Lara struct {
 	dpos              *dpos_contract.DposContract
 	state             State
 	graphQLEndpoint   string
+	multicall         *MulticallContract
+	lastSnapshotId    uint64
 }
 
-func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_address, graphQLEndpoint string, chainID int) *Lara {
+func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_address, graphQLEndpoint string, chainID int, lastSnapshotId uint64) *Lara {
 	l := new(Lara)
 	l.Eth = rpc
 	l.signer = transact.MakeSigner(signing_key, chainID)
 	l.deploymentAddress = deployment_address
 	l.chainID = &chainID
 	l.graphQLEndpoint = graphQLEndpoint
+	l.lastSnapshotId = lastSnapshotId
 	contract, err := lara_contract.NewLaraContract(common.HexToAddress(l.deploymentAddress), l.Eth)
 	if err != nil {
 		log.Fatalf("Failed to create contract: %v", err)
@@ -68,6 +71,7 @@ func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_add
 	}
 	l.contract = contract
 	l.SyncState()
+	l.multicall = MakeMulticallContract(l.Eth, signing_key, "0xfce7a3121b42664aad145712e1c2bf2e38f60aa1", *l.chainID, 5000000)
 	return l
 }
 
@@ -162,32 +166,68 @@ func (l *Lara) retryTransaction(txFunc func() (*types.Transaction, error), descr
 	return fmt.Errorf("failed to %s after maximum retries", description)
 }
 
-func (l *Lara) IsSnapshotDistributedToUser(snapshotId *big.Int, userAddress common.Address) bool {
+func (l *Lara) IsSnapshotDistributedToUser(snapshotId uint64, userAddress common.Address) bool {
 	opts := &bind.CallOpts{
 		Pending:     false,
 		From:        l.signer.From,
 		BlockNumber: nil,
 		Context:     nil,
 	}
-	laraDistributedAlready, err := l.contract.StakerSnapshotClaimed(opts, userAddress, snapshotId)
+	laraDistributedAlready, err := l.contract.StakerSnapshotClaimed(opts, userAddress, big.NewInt(int64(snapshotId)))
 	if err != nil {
 		log.Fatalf("Failed to get staker snapshot claimed: %v", err)
 	}
 	return laraDistributedAlready
 }
 
-func (l *Lara) GetRewardsPerSnapshot(snapshotId *big.Int) *big.Int {
+func (l *Lara) GetRewardsPerSnapshot(snapshotId uint64) *big.Int {
 	opts := &bind.CallOpts{
 		Pending:     false,
 		From:        l.signer.From,
 		BlockNumber: nil,
 		Context:     nil,
 	}
-	rewards, err := l.contract.RewardsPerSnapshot(opts, snapshotId)
+	rewards, err := l.contract.RewardsPerSnapshot(opts, big.NewInt(int64(snapshotId)))
 	if err != nil {
 		log.Fatalf("Failed to get rewards per snapshot: %v", err)
 	}
 	return rewards
+}
+
+func (l *Lara) retryMulticallDistributeRewards(holderAddresses []common.Address, snapshotId uint64) error {
+	log.Infof("LARA: Distributing rewards for snapshot %d to %d holders", snapshotId, len(holderAddresses))
+
+	const laraABI = `[{"type":"function","name":"distributeRewardsForSnapshot","inputs":[{"name":"staker","type":"address","internalType": "address"},{"name":"snapshotId","type":"uint256","internalType": "uint256"}],"outputs":[],"stateMutability":"nonpayable"}]`
+
+	// Parse the ABI
+	parsedABI, err := abi.JSON(strings.NewReader(laraABI))
+	if err != nil {
+		log.Fatalf("Failed to parse ABI: %v", err)
+	}
+	multicall := make([]multicall_contract.MulticallCall, 0)
+	for _, holderAddress := range holderAddresses {
+		data, err := parsedABI.Pack("distributeRewardsForSnapshot", holderAddress, big.NewInt(int64(snapshotId)))
+		if err != nil {
+			log.Fatalf("Failed to pack data: %v", err)
+		}
+		multicall = append(multicall, multicall_contract.MulticallCall{
+			Target:   common.HexToAddress(l.deploymentAddress),
+			CallData: data,
+		})
+	}
+
+	if len(multicall) == 0 {
+		log.Infof("Empty multicall")
+		return nil
+	}
+
+	tx, err := l.multicall.Multicall(multicall)
+	if err != nil {
+		return err
+	}
+
+	log.WithFields(log.Fields{"txhash": tx.TxHash.Hex()}).Infof("LARA: Distribute rewards for snapshot %d to holders", snapshotId)
+	return nil
 }
 
 func (l *Lara) retryDistributeRewards(holderAddress common.Address, snapshotId *big.Int) error {
@@ -231,14 +271,14 @@ func (l *Lara) retryDistributeRewards(holderAddress common.Address, snapshotId *
 	return err
 }
 
-func (l *Lara) DisburseRewardsBetweenHolders(snapshotId *big.Int) {
+func (l *Lara) DisburseRewardsBetweenHolders(snapshotId uint64) {
 	rewards := l.GetRewardsPerSnapshot(snapshotId)
 	if rewards.Cmp(big.NewInt(0)) == 0 {
-		l.state.lastSnapshotIdDistributed = snapshotId
+		l.lastSnapshotId = snapshotId
 		log.WithFields(log.Fields{"snapshotID": snapshotId}).Info("LARA: No rewards to distribute")
 		return
 	}
-	blockNumber, err := l.GetLastSnapshotIDUpdateTime(snapshotId)
+	blockNumber, err := l.GetLastSnapshotIDUpdateBlock(snapshotId)
 	if err != nil {
 		log.Fatalf("Failed to get block number: %v", err)
 	}
@@ -247,6 +287,7 @@ func (l *Lara) DisburseRewardsBetweenHolders(snapshotId *big.Int) {
 
 	log.WithFields(log.Fields{"# of holders": len(holders), "snapshotID": snapshotId}).Info("LARA: Disbursing rewards to holders for snapshot")
 
+	holdersToDistribute := make([]common.Address, 0)
 	for _, holder := range holders {
 		holderAddress := common.HexToAddress(holder)
 
@@ -254,17 +295,14 @@ func (l *Lara) DisburseRewardsBetweenHolders(snapshotId *big.Int) {
 		if isDistributed {
 			log.WithFields(log.Fields{"holder": holder, "snapshotID": snapshotId}).Info("LARA: Snapshot already distributed to holder")
 			continue
+		} else {
+			holdersToDistribute = append(holdersToDistribute, holderAddress)
 		}
+	}
 
-		err := l.retryDistributeRewards(holderAddress, snapshotId)
-		if err != nil {
-			if strings.Contains(err.Error(), "Transaction already in transactions pool") {
-				log.Warn("Disburse tx already in pool")
-			} else {
-				log.Fatalf("Failed to disburse rewards for snapshot: %v with address: %s and snapshotID: %s", err, holderAddress.Hex(), snapshotId.String())
-			}
-			return
-		}
+	err = l.retryMulticallDistributeRewards(holdersToDistribute, snapshotId)
+	if err != nil {
+		log.Fatalf("Failed to disburse rewards for snapshot: %v", err)
 	}
 }
 
@@ -392,7 +430,6 @@ func (l *Lara) SyncState() {
 		lastEpochTotalDelegatedAmount: lastEpochTotalDelegatedAmount,
 		validatorStakes:               validatorStakes,
 		validators:                    validators,
-		lastSnapshotIdDistributed:     big.NewInt(1),
 	}
 	nextSnapshot := big.NewInt(0).Add(lastSnapshotBlock, epochDuration)
 	currentBlock, err := l.Eth.BlockNumber(context.Background())
@@ -440,8 +477,8 @@ func (l *Lara) Rebalance() {
 	}
 }
 
-func (l *Lara) GetLastSnapshotIDUpdateTime(snapshotID *big.Int) (uint64, error) {
-	iter, err := l.contract.FilterSnapshotTaken(&bind.FilterOpts{}, []*big.Int{snapshotID}, nil, nil)
+func (l *Lara) GetLastSnapshotIDUpdateBlock(snapshotID uint64) (uint64, error) {
+	iter, err := l.contract.FilterSnapshotTaken(&bind.FilterOpts{}, []*big.Int{big.NewInt(int64(snapshotID))}, nil, nil)
 	if err != nil {
 		log.Errorf("Failed to get last snapshot ID update time: %v", err)
 		return 0, err
@@ -449,56 +486,25 @@ func (l *Lara) GetLastSnapshotIDUpdateTime(snapshotID *big.Int) (uint64, error) 
 	defer iter.Close()
 
 	if iter.Next() {
-		log.Infof("SnapshotTaken event found for snapshotID %s at block %d", snapshotID.String(), iter.Event.Raw.BlockNumber)
+		log.Infof("SnapshotTaken event found for snapshotID %d at block %d", snapshotID, iter.Event.Raw.BlockNumber)
 		return iter.Event.Raw.BlockNumber, nil
 	}
 
-	return 0, fmt.Errorf("no SnapshotTaken event found for snapshotID %s", snapshotID.String())
-}
-
-func (l *Lara) distributeRewardsUpToSnapshot(latestSnapshotId *big.Int) {
-	for snapshotId := new(big.Int).Add(l.state.lastSnapshotIdDistributed, big.NewInt(1)); snapshotId.Cmp(latestSnapshotId) <= 0; snapshotId.Add(snapshotId, big.NewInt(1)) {
-		l.distributeRewardsForSnapshot(snapshotId)
-		l.state.lastSnapshotIdDistributed = snapshotId
-	}
+	return 0, fmt.Errorf("no SnapshotTaken event found for snapshotID %d", snapshotID)
 }
 
 func (l *Lara) FetchAndDistributePastRewards(done chan<- bool) {
 	go func() {
 		log.Info("Starting to fetch and distribute past rewards")
 
-		// Get the latest block number
-		latestBlock, err := l.Eth.BlockNumber(context.Background())
-		if err != nil {
-			log.Errorf("Failed to get latest block number: %v", err)
-			return
-		}
+		snapshotIds := GetSnapshotIds(l.graphQLEndpoint)
 
-		// Create a filter for SnapshotTaken events from lara deployment block to the latest block
-		filterOpts := &bind.FilterOpts{
-			Start:   15637845, // lara deployment block
-			End:     &latestBlock,
-			Context: context.Background(),
-		}
-
-		// Filter for SnapshotTaken events
-		iter, err := l.contract.FilterSnapshotTaken(filterOpts, nil, nil, nil)
-		if err != nil {
-			log.Errorf("Failed to filter SnapshotTaken events: %v", err)
-			return
-		}
-		defer iter.Close()
-
-		for iter.Next() {
-			event := iter.Event
-			log.Infof("Processing past SnapshotID: %s", event.SnapshotId)
-
-			// Check and distribute rewards for this snapshot
-			l.distributeRewardsUpToSnapshot(event.SnapshotId)
-		}
-
-		if err := iter.Error(); err != nil {
-			log.Errorf("Error iterating through SnapshotTaken events: %v", err)
+		for _, snapshotId := range snapshotIds {
+			log.Infof("Processing snapshotID %d", snapshotId)
+			log.Infof("Last distributed snapshotID %d", l.lastSnapshotId)
+			if snapshotId >= l.lastSnapshotId {
+				l.distributeRewardsForSnapshot(snapshotId)
+			}
 		}
 
 		log.Info("Finished processing past SnapshotTaken events")
@@ -506,37 +512,32 @@ func (l *Lara) FetchAndDistributePastRewards(done chan<- bool) {
 	}()
 }
 
-func (l *Lara) distributeRewardsForSnapshot(snapshotId *big.Int) {
-	log.Infof("Checking rewards distribution for SnapshotID %s", snapshotId)
+func (l *Lara) SetLastDistributedSnapshotId(snapshotId *big.Int) {
+	tx, err := l.contract.SetLastFullyDistributedSnapshotId(l.signer, snapshotId)
+	if err != nil {
+		log.Errorf("Failed to set last fully distributed snapshot ID: %v", err)
+	}
+	receipt, err := bind.WaitMined(context.Background(), l.Eth, tx)
+	if err != nil {
+		log.Errorf("Failed to wait for transaction to be mined: %v", err)
+	}
+	if receipt.Status == types.ReceiptStatusFailed {
+		log.Errorf("Failed to set last fully distributed snapshot ID: %v", err)
+	}
+}
+
+func (l *Lara) distributeRewardsForSnapshot(snapshotId uint64) {
+	log.Infof("Checking rewards distribution for SnapshotID %d", snapshotId)
 
 	rewards := l.GetRewardsPerSnapshot(snapshotId)
 	if rewards.Cmp(big.NewInt(0)) == 0 {
-		l.state.lastSnapshotIdDistributed = snapshotId
+		l.lastSnapshotId = snapshotId
 		log.WithFields(log.Fields{"snapshotID": snapshotId}).Info("LARA: No rewards to distribute")
 		return
 	}
 
-	blockNumber, err := l.GetLastSnapshotIDUpdateTime(snapshotId)
-	if err != nil {
-		log.Errorf("Failed to get block number for SnapshotID %s: %v", snapshotId, err)
-		return
-	}
+	log.Infof("Distributing rewards for SnapshotID %d", snapshotId)
+	l.DisburseRewardsBetweenHolders(snapshotId)
+	l.lastSnapshotId = snapshotId
 
-	holders := GetStakedTaraHolders(l.graphQLEndpoint, blockNumber)
-	rewardsDistributed := false
-
-	for _, holder := range holders {
-		holderAddress := common.HexToAddress(holder)
-		isDistributed := l.IsSnapshotDistributedToUser(snapshotId, holderAddress)
-		if !isDistributed {
-			log.Infof("Distributing rewards for SnapshotID %s to holder %s", snapshotId, holder)
-			l.DisburseRewardsBetweenHolders(snapshotId)
-			rewardsDistributed = true
-			break
-		}
-	}
-
-	if !rewardsDistributed {
-		log.Infof("All rewards already distributed for SnapshotID %s", snapshotId)
-	}
 }

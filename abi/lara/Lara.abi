@@ -117,6 +117,13 @@
     },
     {
       "type": "function",
+      "name": "lastFullyDistributedSnapshotId",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "lastRebalance",
       "inputs": [],
       "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
@@ -241,6 +248,15 @@
       "type": "function",
       "name": "setEpochDuration",
       "inputs": [{ "name": "_epochDuration", "type": "uint256", "internalType": "uint256" }],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setLastFullyDistributedSnapshotId",
+      "inputs": [
+        { "name": "_lastFullyDistributedSnapshotId", "type": "uint256", "internalType": "uint256" }
+      ],
       "outputs": [],
       "stateMutability": "nonpayable"
     },

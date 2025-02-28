@@ -44,6 +44,7 @@ var (
 	graphQLEndpoint                  *string
 	lara_enabled                     *bool
 	general_block_time               *int
+	last_snapshot_id                 *uint64
 )
 
 func init() {
@@ -62,6 +63,7 @@ func init() {
 	graphQLEndpoint = flag.String("graphQLEndpoint", "https://indexer.community.taraxa.io/subgraphs/name/Liquid-staking/lara-subgraph", "graphql endpoint")
 	lara_enabled = flag.Bool("lara_enabled", false, "enable lara")
 	general_block_time = flag.Int("general_block_time", 3600, "general block time in milliseconds")
+	last_snapshot_id = flag.Uint64("last_snapshot_id", 335, "last snapshot id")
 	flag.Parse()
 
 	logging.Config(filepath.Join(*data_dir, "logs"), *log_level)
@@ -77,7 +79,8 @@ func init() {
 		"log_level":          *log_level,
 		"graphQLEndpoint":    *graphQLEndpoint,
 		"lara_enabled":       *lara_enabled,
-		"general_block_time": *general_block_time}).
+		"general_block_time": *general_block_time,
+		"last_snapshot_id":   *last_snapshot_id}).
 		Info("Application started")
 }
 
@@ -106,7 +109,7 @@ func main() {
 
 	if is_lara_enabled {
 		log.Info("Starting Taraxa Indexer in Lara mode")
-		lara := lara.MakeLara(rpc, *signing_key, *lara_address, *oracle_address, *graphQLEndpoint, *chain_id)
+		lara := lara.MakeLara(rpc, *signing_key, *lara_address, *oracle_address, *graphQLEndpoint, *chain_id, *last_snapshot_id)
 		log.Info("Lara initialized")
 
 		var wg sync.WaitGroup
