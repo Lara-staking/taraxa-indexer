@@ -8,7 +8,6 @@ import (
 	"github.com/Taraxa-project/taraxa-indexer/internal/common"
 	"github.com/Taraxa-project/taraxa-indexer/internal/events"
 	"github.com/Taraxa-project/taraxa-indexer/models"
-	log "github.com/sirupsen/logrus"
 )
 
 type Account struct {
@@ -25,90 +24,82 @@ func (a *Account) ToModel() models.Account {
 
 type Accounts []Account
 
-func (a *Accounts) SortByBalanceDescending() {
-	sort.Slice(*a, func(i, j int) bool {
-		return (*a)[i].Balance.Cmp((*a)[j].Balance) == 1
+func (a Accounts) ToMap() *AccountsMap {
+	am := &AccountsMap{
+		accounts: make(map[string]*big.Int),
+	}
+	for _, account := range a {
+		am.accounts[account.Address] = account.Balance
+	}
+	return am
+}
+
+type AccountsMap struct {
+	accounts map[string]*big.Int
+}
+
+func MakeAccountsMap() *AccountsMap {
+	return &AccountsMap{
+		accounts: make(map[string]*big.Int),
+	}
+}
+
+func (am *AccountsMap) GetAccounts() map[string]*big.Int {
+	return am.accounts
+}
+
+func (am *AccountsMap) GetLength() int {
+	return len(am.accounts)
+}
+
+func (am *AccountsMap) toSlice() Accounts {
+	slice := make(Accounts, 0, len(am.accounts))
+	for address, balance := range am.accounts {
+		slice = append(slice, Account{Address: address, Balance: balance})
+	}
+	return slice
+}
+
+func (am *AccountsMap) SortedSlice() Accounts {
+	sl := am.toSlice()
+	sort.Slice(sl, func(i, j int) bool {
+		return sl[i].Balance.Cmp(sl[j].Balance) == 1
 	})
+	return sl
 }
 
-func (a *Accounts) SetNegativeBalanceToZero() {
-	for i := 0; i < len(*a); i++ {
-		if (*a)[i].Balance.Cmp(big.NewInt(0)) == -1 {
-			(*a)[i].Balance = big.NewInt(0)
-		}
-	}
-}
-
-func (a *Accounts) findIndex(address string) int {
-	for i := 0; i < len(*a); i++ {
-		if strings.EqualFold((*a)[i].Address, address) {
-			return i
-		}
-	}
-	return -1
-}
-
-func (a *Accounts) FindBalance(address string) *Account {
-	i := a.findIndex(address)
-	if i == -1 {
-		return nil
-	}
-	return &(*a)[i]
-}
-
-func (a *Accounts) RegisterBalance(address string) *Account {
-	// Append the new account to the array
-	*a = append(*a, Account{
-		Address: address,
-		Balance: big.NewInt(0),
-	})
-
-	return &(*a)[len(*a)-1]
-}
-
-func (a *Accounts) RemoveBalance(address string) {
-	i := a.findIndex(address)
-	if i != -1 {
-		*a = append((*a)[:i], (*a)[i+1:]...)
-	}
-}
-
-func (a *Accounts) AddToBalance(address string, value *big.Int) {
+func (am *AccountsMap) GetBalance(address string) *big.Int {
 	address = strings.ToLower(address)
-	account := a.FindBalance(address)
-	if account == nil {
-		account = a.RegisterBalance(address)
-	}
-	account.Balance.Add(account.Balance, value)
-	if account.Balance.Cmp(big.NewInt(0)) == 0 {
-		a.RemoveBalance(address)
-	}
-	if account.Balance.Cmp(big.NewInt(0)) == -1 {
-		log.WithField("address", address).WithField("balance", account.Balance.String()).Error("Account balance is negative")
-		account.Balance = big.NewInt(0)
-	}
+	return am.accounts[address]
 }
 
-func (a *Accounts) UpdateBalances(from, to, value_str string) {
-	from = strings.ToLower(from)
-	to = strings.ToLower(to)
-	value, ok := big.NewInt(0).SetString(value_str, 0)
-
-	if ok && value.Cmp(big.NewInt(0)) == 1 {
-		a.AddToBalance(from, big.NewInt(0).Neg(value))
-		a.AddToBalance(to, value)
+func (am *AccountsMap) AddToBalance(address string, value *big.Int) {
+	address = strings.ToLower(address)
+	if _, ok := am.accounts[address]; !ok {
+		am.accounts[address] = big.NewInt(0)
 	}
+	am.accounts[address].Add(am.accounts[address], value)
 }
 
-func (a *Accounts) UpdateEvents(logs []models.EventLog) error {
+func (am *AccountsMap) UpdateBalances(from, to, valueStr string) {
+	value, ok := big.NewInt(0).SetString(valueStr, 0)
+
+	if ok && value.Cmp(big.NewInt(0)) > 0 {
+		am.AddToBalance(from, big.NewInt(0).Neg(value))
+		am.AddToBalance(to, value)
+	}
+
+}
+
+func (am *AccountsMap) UpdateEvents(logs []models.EventLog) error {
 	if len(logs) > 0 {
-		rewards_events, err := events.DecodeRewardsTopics(logs)
+		rewardsEvents, err := events.DecodeRewardsTopics(logs)
 		if err != nil {
 			return err
 		}
-		for _, event := range rewards_events {
-			a.AddToBalance(common.DposContractAddress, big.NewInt(0).Neg(event.Value))
-			a.AddToBalance(event.Account, event.Value)
+		for _, event := range rewardsEvents {
+			am.AddToBalance(common.DposContractAddress, big.NewInt(0).Neg(event.Value))
+			am.AddToBalance(event.Account, event.Value)
 		}
 	}
 	return nil
