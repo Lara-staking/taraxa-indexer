@@ -24,49 +24,14 @@ func (bc *blockContext) processTransactions() (err error) {
 
 	start_tp := time.Now()
 	for t_idx := 0; t_idx < len(bc.Block.Transactions); t_idx++ {
-		start_transaction := time.Now()
-		bc.Block.Transactions[t_idx].SetTimestamp(bc.Block.Pbft.Timestamp)
-
-		bc.SaveTransaction(*bc.Block.Transactions[t_idx].GetModel(), false)
-		elapsed_transaction := time.Since(start_transaction)
-		log.WithFields(log.Fields{"func": "SaveTransaction", "elapsed": elapsed_transaction}).Debug("Save transaction time")
-
-		start_transaction = time.Now()
-
 		trx_fee := bc.Block.Transactions[t_idx].GetFee()
 		feeReward.Add(feeReward, trx_fee)
 		// Remove fee from sender balance
 		bc.accounts.AddToBalance(bc.Block.Transactions[t_idx].From, big.NewInt(0).Neg(trx_fee))
-		if !bc.Block.Transactions[t_idx].Status {
-			continue
-		}
-		// remove value from sender and add to receiver
-		receiver := bc.Block.Transactions[t_idx].To
-		// handle contract creation
-		if receiver == "" {
-			receiver = bc.Block.Transactions[t_idx].ContractAddress
-		}
-		bc.accounts.UpdateBalances(bc.Block.Transactions[t_idx].From, receiver, bc.Block.Transactions[t_idx].Value)
-		elapsed_update_balances := time.Since(start_transaction)
-		log.WithFields(log.Fields{"func": "UpdateBalances", "elapsed": elapsed_update_balances}).Debug("Update balances time")
-
-		start_transaction = time.Now()
-		// process logs
-		err = bc.processTransactionLogs(bc.Block.Transactions[t_idx])
+		err = bc.processTransaction(t_idx)
 		if err != nil {
 			return
 		}
-		elapsed_process_logs := time.Since(start_transaction)
-		log.WithFields(log.Fields{"func": "processTransactionLogs", "elapsed": elapsed_process_logs}).Debug("Process logs time")
-
-		start_transaction = time.Now()
-		if len(bc.Block.Traces) > 0 {
-			if internal_transactions := bc.processInternalTransactions(bc.Block.Traces[t_idx], t_idx, bc.Block.Transactions[t_idx].GasPrice); internal_transactions != nil {
-				bc.Batch.AddSingleKey(internal_transactions, bc.Block.Transactions[t_idx].Hash)
-			}
-		}
-		elapsed_process_internal_transactions := time.Since(start_transaction)
-		log.WithFields(log.Fields{"func": "processInternalTransactions", "elapsed": elapsed_process_internal_transactions}).Debug("Process internal transactions time")
 	}
 	elapsed_tp := time.Since(start_tp)
 	log.WithFields(log.Fields{"func": "scheduleTransactions", "period": bc.Block.Pbft.Number, "elapsed": elapsed_tp}).Debug("Schedule transactions time")
