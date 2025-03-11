@@ -141,7 +141,6 @@ func (state *MulticallContract) estimateGasForMulticall(multicall []multicall_co
 	return gas, nil
 }
 
-// Placeholder function for estimating gas for a call
 func (state *MulticallContract) estimateGasForCall(call multicall_contract.MulticallCall) (uint64, error) {
 	abi, err := abi.JSON(strings.NewReader(multicall_contract.MulticallContractABI))
 	if err != nil {

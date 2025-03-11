@@ -26,6 +26,13 @@ type SnapshotResponse struct {
 type Snapshot struct {
 	ID           string `json:"id"`
 	TotalRewards string `json:"totalRewards"`
+	Block        string `json:"block"`
+}
+
+type SnapshotWithBlock struct {
+	ID           uint64   `json:"id"`
+	TotalRewards *big.Int `json:"totalRewards"`
+	Block        uint64   `json:"block"`
 }
 
 func GetStakedTaraHolders(endpoint string, blockNumber uint64) []string {
@@ -85,13 +92,13 @@ func GetStakedTaraHolders(endpoint string, blockNumber uint64) []string {
 	return stakers
 }
 
-func GetSnapshotIds(endpoint string) []uint64 {
+func GetSnapshotsWithBlocks(endpoint string) []SnapshotWithBlock {
 	if endpoint == "" {
 		log.Fatal("GraphQL endpoint is not set")
 	}
 	client := graphql.NewClient(endpoint)
 
-	snapshotIds := []uint64{}
+	snapshots := []SnapshotWithBlock{}
 
 	first := 100
 	skip := 0
@@ -103,6 +110,7 @@ func GetSnapshotIds(endpoint string) []uint64 {
 			snapshots(first: $first, skip: $skip){
 				id
 				totalRewards
+				block
 			}
 		}
 	`)
@@ -132,7 +140,12 @@ func GetSnapshotIds(endpoint string) []uint64 {
 					log.Printf("Failed to convert snapshot.ID to uint64: %v", snapshot.ID)
 					continue
 				}
-				snapshotIds = append(snapshotIds, snapshotId)
+				block, err := strconv.ParseUint(snapshot.Block, 10, 64)
+				if err != nil {
+					log.Printf("Failed to convert snapshot.Block to uint64: %v", snapshot.Block)
+					continue
+				}
+				snapshots = append(snapshots, SnapshotWithBlock{ID: snapshotId, TotalRewards: totalRewards, Block: block})
 			}
 		}
 
@@ -142,7 +155,7 @@ func GetSnapshotIds(endpoint string) []uint64 {
 			break
 		}
 	}
-	log.Infof("Total snapshots: %d", len(snapshotIds))
+	log.Infof("Total snapshots: %d", len(snapshots))
 
-	return snapshotIds
+	return snapshots
 }

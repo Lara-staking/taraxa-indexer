@@ -150,7 +150,7 @@ func (i *Indexer) sync(start, end uint64) error {
 func (i *Indexer) run() error {
 	for {
 		start := i.storage.GetFinalizationData().PbftCount + 1
-		end, p_err := i.client.GetLatestPeriod()
+		end, p_err := i.Client.GetLatestPeriod()
 		if p_err != nil {
 			return p_err
 		}
