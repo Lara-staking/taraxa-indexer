@@ -83,12 +83,22 @@ func (l *Lara) Run(interval int, generalBlockTime int) {
 	}
 
 	go func() {
+		log.WithFields(log.Fields{"interval": interval, "generalBlockTime": generalBlockTime}).Info("LARA: Registering rewards distribution ticker")
 		rewardTicker := time.NewTicker(2 * time.Hour)
 		defer rewardTicker.Stop()
 
-		for range rewardTicker.C {
-			log.Infof("Fetching and distributing past rewards at %s", time.Now().Format("2006-01-02 15:04:05"))
-			l.FetchAndDistributePastRewards()
+		logTicker := time.NewTicker(5 * time.Minute)
+		defer logTicker.Stop()
+
+		for {
+			select {
+			case <-rewardTicker.C:
+				log.Infof("Fetching and distributing past rewards at %s", time.Now().Format("2006-01-02 15:04:05"))
+				l.FetchAndDistributePastRewards()
+			case <-logTicker.C:
+				nextDistribution := time.Now().Add(2 * time.Hour)
+				log.Infof("Next rewards distribution happening at %s", nextDistribution.Format("2006-01-02 15:04:05"))
+			}
 		}
 	}()
 
