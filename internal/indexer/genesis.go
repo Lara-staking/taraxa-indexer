@@ -24,6 +24,7 @@ func MakeGenesis(s storage.Storage, c chain.Client, oracle *oracle.Oracle, gen_o
 	genesis.storage = s
 	genesis.genesis = gen_obj
 	genesis.hash = string(genesisHash)
+	genesis.accounts = accounts
 	genesis.bc = *MakeBlockContext(s, c, oracle, &common.Config{Chain: gen_obj.ToChainConfig()}, accounts)
 
 	return &genesis

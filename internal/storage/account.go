@@ -88,7 +88,6 @@ func (am *AccountsMap) UpdateBalances(from, to, valueStr string) {
 		am.AddToBalance(from, big.NewInt(0).Neg(value))
 		am.AddToBalance(to, value)
 	}
-
 }
 
 func (am *AccountsMap) UpdateEvents(logs []models.EventLog) error {

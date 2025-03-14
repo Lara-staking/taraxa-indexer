@@ -16,6 +16,7 @@ func (bc *blockContext) processTransactions() (err error) {
 		return
 	}
 
+	start := time.Now()
 	if len(bc.Block.Pbft.Transactions) != len(bc.Block.Transactions) {
 		log.WithFields(log.Fields{"in_block": len(bc.Block.Pbft.Transactions), "transactions": len(bc.Block.Transactions), "traces": len(bc.Block.Traces)}).Error("Transactions count mismatch")
 	}
@@ -38,6 +39,8 @@ func (bc *blockContext) processTransactions() (err error) {
 	if bc.Config.Chain != nil && (bc.Block.Pbft.Number < bc.Config.Chain.Hardforks.MagnoliaHf.BlockNum) {
 		bc.accounts.AddToBalance(bc.Block.Pbft.Author, feeReward)
 	}
+	elapsed := time.Since(start)
+	log.WithFields(log.Fields{"func": "processTransactions", "elapsed": elapsed}).Debug("Process transactions time")
 	return
 }
 
