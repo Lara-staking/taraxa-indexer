@@ -81,47 +81,56 @@ func (l *Lara) Run(interval int, generalBlockTime int) {
 	if l.Eth == nil {
 		log.Fatalf("Eth client is nil")
 	}
-
-	go func() {
-		log.WithFields(log.Fields{"interval": interval, "generalBlockTime": generalBlockTime}).Info("LARA: Registering rewards distribution ticker")
-		rewardTicker := time.NewTicker(2 * time.Hour)
-		defer rewardTicker.Stop()
-
-		logTicker := time.NewTicker(5 * time.Minute)
-		defer logTicker.Stop()
-
-		for {
-			select {
-			case <-rewardTicker.C:
-				log.Infof("Fetching and distributing past rewards at %s", time.Now().Format("2006-01-02 15:04:05"))
-				l.FetchAndDistributePastRewards()
-			case <-logTicker.C:
-				nextDistribution := time.Now().Add(2 * time.Hour)
-				log.Infof("Next rewards distribution happening at %s", nextDistribution.Format("2006-01-02 15:04:05"))
-			}
-		}
-	}()
-
 	ticker := time.NewTicker(1 * time.Minute)
-	for range ticker.C {
-		ctx := context.Background()
-		currentBlock, err := l.Eth.BlockNumber(ctx)
-		if err != nil {
-			log.Fatalf("Lara: Failed to get current block: %v", err)
-		}
-		// if we pass the time to end epoch
-		expectedSnapshotTime := l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64()
-		expectedRebalanceTime := l.state.lastRebalance.Int64() + l.state.epochDuration.Int64()
-		l.SyncState()
+	defer ticker.Stop()
+	log.WithFields(log.Fields{"interval": interval, "generalBlockTime": generalBlockTime}).Info("LARA: Registering rewards distribution ticker")
+	rewardInterval := 2 * time.Hour
+	rewardTicker := time.NewTicker(rewardInterval)
+	defer rewardTicker.Stop()
 
-		if int64(currentBlock) > expectedSnapshotTime {
-			l.Compound()
+	logInterval := 5 * time.Minute
+	logTicker := time.NewTicker(logInterval)
+	defer logTicker.Stop()
 
+	lastRewardTime := time.Now()
+
+	var rewardMutex sync.Mutex
+
+	for {
+		select {
+		case <-rewardTicker.C:
+			go func() {
+				rewardMutex.Lock()
+				defer rewardMutex.Unlock()
+				lastRewardTime = time.Now()
+				log.Infof("Fetching and distributing past rewards at %s", lastRewardTime.Format("2006-01-02 15:04:05"))
+				l.FetchAndDistributePastRewards()
+				lastRewardTime = time.Now()
+			}()
+		case <-logTicker.C:
+			nextDistribution := lastRewardTime.Add(rewardInterval)
+			remainingTime := time.Until(nextDistribution)
+			log.Infof("Time until next rewards distribution: %s", remainingTime)
+		case <-ticker.C:
+			ctx := context.Background()
+			currentBlock, err := l.Eth.BlockNumber(ctx)
+			if err != nil {
+				log.Fatalf("Lara: Failed to get current block: %v", err)
+			}
+			// if we pass the time to end epoch
+			expectedSnapshotTime := l.state.lastSnapshotBlock.Int64() + l.state.epochDuration.Int64()
+			expectedRebalanceTime := l.state.lastRebalance.Int64() + l.state.epochDuration.Int64()
 			l.SyncState()
-		}
-		if int64(currentBlock) > expectedRebalanceTime {
-			log.Warnf("Triggering rebalance at block: %d, expected rebalance time: %d", currentBlock, expectedRebalanceTime)
-			l.Rebalance()
+
+			if int64(currentBlock) > expectedSnapshotTime {
+				l.Compound()
+
+				l.SyncState()
+			}
+			if int64(currentBlock) > expectedRebalanceTime {
+				log.Warnf("Triggering rebalance at block: %d, expected rebalance time: %d", currentBlock, expectedRebalanceTime)
+				l.Rebalance()
+			}
 		}
 	}
 }
@@ -212,29 +221,41 @@ func (l *Lara) retryMulticallDistributeRewards(holderAddresses []common.Address,
 	if err != nil {
 		log.Fatalf("Failed to parse ABI: %v", err)
 	}
-	multicall := make([]multicall_contract.MulticallCall, 0)
-	for _, holderAddress := range holderAddresses {
-		data, err := parsedABI.Pack("distributeRewardsForSnapshot", holderAddress, big.NewInt(int64(snapshotId)))
-		if err != nil {
-			log.Fatalf("Failed to pack data: %v", err)
+	if len(holderAddresses) > 150 {
+		log.Warnf("Multicall is too large, splitting into chunks")
+		// execute in chunks of 150
+		for i := 0; i < len(holderAddresses); i += 150 {
+			chunk := holderAddresses[i:min(i+150, len(holderAddresses))]
+			err := l.retryMulticallDistributeRewards(chunk, snapshotId)
+			if err != nil {
+				return err
+			}
 		}
-		multicall = append(multicall, multicall_contract.MulticallCall{
-			Target:   common.HexToAddress(l.deploymentAddress),
-			CallData: data,
-		})
+	} else {
+		multicall := make([]multicall_contract.MulticallCall, 0)
+		for _, holderAddress := range holderAddresses {
+			data, err := parsedABI.Pack("distributeRewardsForSnapshot", holderAddress, big.NewInt(int64(snapshotId)))
+			if err != nil {
+				log.Fatalf("Failed to pack data: %v", err)
+			}
+			multicall = append(multicall, multicall_contract.MulticallCall{
+				Target:   common.HexToAddress(l.deploymentAddress),
+				CallData: data,
+			})
+		}
+
+		if len(multicall) == 0 {
+			log.Infof("Empty multicall")
+			return nil
+		}
+
+		tx, err := l.multicall.Multicall(multicall)
+		if err != nil {
+			return err
+		}
+		log.WithFields(log.Fields{"txhash": tx.TxHash.Hex()}).Infof("LARA: Distribute rewards for snapshot %d to holders", snapshotId)
 	}
 
-	if len(multicall) == 0 {
-		log.Infof("Empty multicall")
-		return nil
-	}
-
-	tx, err := l.multicall.Multicall(multicall)
-	if err != nil {
-		return err
-	}
-
-	log.WithFields(log.Fields{"txhash": tx.TxHash.Hex()}).Infof("LARA: Distribute rewards for snapshot %d to holders", snapshotId)
 	return nil
 }
 
