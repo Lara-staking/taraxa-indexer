@@ -538,6 +538,7 @@ func (l *Lara) FetchAndDistributePastRewards() {
 						finalSnapshotId = snapshot.ID
 					}
 					mu.Unlock()
+					return
 				}
 			}(snapshot)
 		}
