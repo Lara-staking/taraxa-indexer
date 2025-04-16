@@ -46,7 +46,7 @@ func (state *MulticallContract) Multicall(multicall []multicall_contract.Multica
 		From:     state.signer.From,
 		Signer:   state.signer.Signer,
 		GasLimit: state.gasLimit,
-		GasPrice: big.NewInt(1),
+		GasPrice: big.NewInt(110000000100),
 		Context:  context.Background(),
 	}
 	tx, err := state.contract.Aggregate(opts, multicall)
