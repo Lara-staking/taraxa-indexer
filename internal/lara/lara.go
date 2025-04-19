@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	log "github.com/sirupsen/logrus"
 )
@@ -49,6 +50,12 @@ type Lara struct {
 	graphQLEndpoint   string
 	multicall         *MulticallContract
 	lastSnapshotId    uint64
+}
+
+type SnapshotTakenEvent struct {
+	SnapshotId           *big.Int
+	TotalDelegation      *big.Int
+	DistributableRewards *big.Int
 }
 
 func MakeLara(rpc *ethclient.Client, signing_key, deployment_address, oracle_address, graphQLEndpoint string, chainID int, lastSnapshotId uint64) *Lara {
@@ -84,33 +91,15 @@ func (l *Lara) Run(interval int, generalBlockTime int) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	log.WithFields(log.Fields{"interval": interval, "generalBlockTime": generalBlockTime}).Info("LARA: Registering rewards distribution ticker")
-	rewardInterval := 2 * time.Hour
-	rewardTicker := time.NewTicker(rewardInterval)
-	defer rewardTicker.Stop()
 
-	logInterval := 5 * time.Minute
-	logTicker := time.NewTicker(logInterval)
-	defer logTicker.Stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	lastRewardTime := time.Now()
-
-	var rewardMutex sync.Mutex
+	// Start listening for new snapshots
+	go l.ListenForSnapshots(ctx)
 
 	for {
 		select {
-		case <-rewardTicker.C:
-			go func() {
-				rewardMutex.Lock()
-				defer rewardMutex.Unlock()
-				lastRewardTime = time.Now()
-				log.Infof("Fetching and distributing past rewards at %s", lastRewardTime.Format("2006-01-02 15:04:05"))
-				l.FetchAndDistributePastRewards()
-				lastRewardTime = time.Now()
-			}()
-		case <-logTicker.C:
-			nextDistribution := lastRewardTime.Add(rewardInterval)
-			remainingTime := time.Until(nextDistribution)
-			log.Infof("Time until next rewards distribution: %s", remainingTime)
 		case <-ticker.C:
 			ctx := context.Background()
 			currentBlock, err := l.Eth.BlockNumber(ctx)
@@ -324,6 +313,7 @@ func (l *Lara) DisburseRewardsBetweenHolders(snapshot SnapshotWithBlock) uint64 
 		}
 	}
 	if len(holdersToDistribute) == 0 {
+		log.WithFields(log.Fields{"snapshotID": snapshot.ID}).Warn("LARA: No holders to distribute rewards to")
 		return 0
 	}
 
@@ -505,10 +495,78 @@ func (l *Lara) Rebalance() {
 	}
 }
 
+func (l *Lara) ProcessSnapshot(snapshot SnapshotWithBlock) {
+	if snapshot.TotalRewards.Cmp(big.NewInt(0)) == 0 {
+		log.WithFields(log.Fields{"snapshotID": snapshot.ID}).Info("Skipping snapshot with zero rewards")
+		l.lastSnapshotId = snapshot.ID
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"blockNumber":  snapshot.Block,
+		"snapshotID":   snapshot.ID,
+		"totalRewards": snapshot.TotalRewards,
+	}).Info("LARA: Processing snapshot")
+
+	stakers := l.DisburseRewardsBetweenHolders(snapshot)
+	if stakers == 0 {
+		l.lastSnapshotId = snapshot.ID
+		log.WithFields(log.Fields{"snapshotID": snapshot.ID}).Info("No stakers to distribute rewards to")
+	}
+}
+
+func (l *Lara) ListenForSnapshots(ctx context.Context) {
+	snapshotTakenSig := []byte("SnapshotTaken(uint256,uint256,uint256)")
+	snapshotTakenHash := crypto.Keccak256Hash(snapshotTakenSig)
+
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{common.HexToAddress(l.deploymentAddress)},
+		Topics:    [][]common.Hash{{snapshotTakenHash}},
+	}
+
+	eventCh := make(chan types.Log)
+	log.Info("Listening for SnapshotTaken events")
+	sub, err := l.Eth.SubscribeFilterLogs(ctx, query, eventCh)
+	log.Info("Subscribed to SnapshotTaken events")
+	if err != nil {
+		log.Fatalf("Failed to subscribe to SnapshotTaken events: %v", err)
+	}
+
+	healthCheckTicker := time.NewTicker(1 * time.Minute)
+	defer healthCheckTicker.Stop()
+
+	for {
+		select {
+		case err := <-sub.Err():
+			log.Errorf("Error in event subscription: %v", err)
+			return
+		case event := <-eventCh:
+			snapshot := SnapshotWithBlock{
+				ID:           event.Topics[1].Big().Uint64(),
+				Block:        event.BlockNumber,
+				TotalRewards: event.Topics[3].Big(),
+			}
+			l.ProcessSnapshot(snapshot)
+		case <-healthCheckTicker.C:
+			log.WithFields(log.Fields{
+				"lastSnapshotId":  l.lastSnapshotId,
+				"contractAddress": l.deploymentAddress,
+			}).Info("SnapshotTaken event listener is active")
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func (l *Lara) FetchAndDistributePastRewards() {
 	log.Info("Starting to fetch and distribute past rewards")
 
 	snapshots := GetSnapshotsWithBlocks(l.graphQLEndpoint)
+	if len(snapshots) == 0 {
+		log.Info("No snapshots to process")
+		return
+	}
+
 	sort.Slice(snapshots, func(i, j int) bool {
 		return snapshots[i].ID > snapshots[j].ID
 	})
@@ -518,27 +576,45 @@ func (l *Lara) FetchAndDistributePastRewards() {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	// Implements a semaphore to limit the number of concurrent goroutines
-	concurrencyLimit := 5 // Adjust this number based on your system's capacity and RPC limits
+	concurrencyLimit := 5
 	semaphore := make(chan struct{}, concurrencyLimit)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	for _, snapshot := range snapshots {
 		if snapshot.ID >= l.lastSnapshotId {
+			// Check if we should process this snapshot
+			if snapshot.TotalRewards.Cmp(big.NewInt(0)) == 0 {
+				log.WithFields(log.Fields{"snapshotID": snapshot.ID}).Info("Skipping snapshot with zero rewards")
+				if snapshot.ID > finalSnapshotId {
+					finalSnapshotId = snapshot.ID
+				}
+				continue
+			}
+
 			wg.Add(1)
-			semaphore <- struct{}{} // Acquire a token
+			semaphore <- struct{}{}
 			go func(snapshot SnapshotWithBlock) {
 				defer wg.Done()
-				defer func() { <-semaphore }() // Release the token
+				defer func() { <-semaphore }()
+
+				if ctx.Err() != nil {
+					log.Infof("Goroutine for snapshotID %d skipped due to cancellation", snapshot.ID)
+					return
+				}
 
 				log.Infof("Processing snapshotID %d", snapshot.ID)
 				stakers := l.DisburseRewardsBetweenHolders(snapshot)
+
 				if stakers == 0 {
 					mu.Lock()
 					if snapshot.ID > finalSnapshotId {
+						log.Infof("Updating finalSnapshotId to %d", snapshot.ID)
 						finalSnapshotId = snapshot.ID
 					}
 					mu.Unlock()
-					return
+					// cancel()
 				}
 			}(snapshot)
 		}
@@ -548,4 +624,5 @@ func (l *Lara) FetchAndDistributePastRewards() {
 
 	log.Info("Finished processing past SnapshotTaken events")
 	l.lastSnapshotId = finalSnapshotId
+	log.Infof("Updating lastSnapshotId to %d", finalSnapshotId)
 }
